@@ -11,6 +11,9 @@
 
 </div>
 
+<img width="1920" height="1146" alt="1111111111111111111111" src="https://github.com/user-attachments/assets/e30f7974-e552-4d3b-9f13-5ad8ad4e917f" />
+
+
 ## Зачем нужен модуль
 
 `luci-app-owrt-full-backup` делает удобную панель в OpenWrt для создания, скачивания, загрузки и восстановления архивов бэкапа. Подходит для обычного сохранения настроек, переноса конфигурации после перепрошивки и подготовки полного архива роутера перед экспериментами.
@@ -232,3 +235,4 @@ owrt-full-backup create -o /mnt/usb
 /mnt/usb
 ```
 
+**Full Changelog**: https://github.com/kzolotarev95/luci-app-owrt-full-backup/commits/v1
