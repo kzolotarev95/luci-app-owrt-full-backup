@@ -697,12 +697,12 @@ button:hover, .button:hover { background: var(--accent-hover); }
 .meter { height: 8px; border-radius: 999px; background: rgba(127,127,127,.18); overflow: hidden; margin: 10px 0; }
 .meter span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--hot)); }
 .disk-meta { display: grid; gap: 3px; color: var(--muted); font-size: 12px; }
-.temp-list { display: grid; gap: 10px; }
-.temp-widget { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: rgba(127,127,127,.06); display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.temp-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.temp-widget { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: rgba(127,127,127,.06); display: grid; gap: 7px; }
 .temp-widget strong, .temp-widget span, .temp-widget b { display: block; }
-.temp-widget span { margin-top: 3px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.temp-widget b { color: var(--hot); font-size: 22px; white-space: nowrap; }
-.settings-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.temp-widget span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.temp-widget b { color: var(--hot); font-size: 16px; white-space: nowrap; }
+.settings-tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
 .settings-tools form { min-width: 0; }
 .settings-tools h2 { margin-top: 0; }
 code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -803,23 +803,6 @@ $(backup_rows)
 </tbody></table>
 </div>
 
-<form class="panel span12" method="post" action="$(self_url)">
-<h2>Восстановить архив</h2>
-<input type="hidden" name="key" value="$key">
-<input type="hidden" name="action" value="restore">
-<label>Путь к архиву</label>
-<input type="text" name="archive" placeholder="/mnt/usb/router-owrt-full-backup.tar.gz">
-<div class="checks">
-<label><input type="checkbox" name="restore_configs" value="1" checked> восстановить настройки</label>
-<label><input type="checkbox" name="restore_packages" value="1"> переустановить список пакетов</label>
-<label><input type="checkbox" name="restore_overlay" value="1"> восстановить overlay snapshot</label>
-<label><input type="checkbox" name="flash_firmware" value="1"> прошить firmware image и перезагрузить</label>
-</div>
-<label>Введи RESTORE для подтверждения</label>
-<input type="text" name="confirm" autocomplete="off">
-<button class="danger" type="submit">Запустить восстановление</button>
-</form>
-
 <div class="panel span12 settings-tools">
 <form method="post" action="$(self_url)">
 <h2>Настройки по умолчанию</h2>
@@ -844,6 +827,23 @@ $(backup_rows)
 <label>Путь к архиву</label>
 <input type="text" name="archive" placeholder="/mnt/usb/router-owrt-full-backup.tar.gz">
 <button type="submit">Посмотреть</button>
+</form>
+
+<form method="post" action="$(self_url)">
+<h2>Восстановить архив</h2>
+<input type="hidden" name="key" value="$key">
+<input type="hidden" name="action" value="restore">
+<label>Путь к архиву</label>
+<input type="text" name="archive" placeholder="/mnt/usb/router-owrt-full-backup.tar.gz">
+<div class="checks">
+<label><input type="checkbox" name="restore_configs" value="1" checked> восстановить настройки</label>
+<label><input type="checkbox" name="restore_packages" value="1"> переустановить список пакетов</label>
+<label><input type="checkbox" name="restore_overlay" value="1"> восстановить overlay snapshot</label>
+<label><input type="checkbox" name="flash_firmware" value="1"> прошить firmware image и перезагрузить</label>
+</div>
+<label>Введи RESTORE для подтверждения</label>
+<input type="text" name="confirm" autocomplete="off">
+<button class="danger" type="submit">Запустить восстановление</button>
 </form>
 </div>
 
