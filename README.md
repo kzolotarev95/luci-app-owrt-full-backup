@@ -232,12 +232,3 @@ owrt-full-backup create -o /mnt/usb
 /mnt/usb
 ```
 
-</details>
-
-## Автор
-
-Проект: `luci-app-owrt-full-backup`
-
-Автор: [byzks95 / kzolotarev95](https://github.com/kzolotarev95)
-
-Связь: [Telegram](https://t.me/kzolotarev95)
