@@ -1,0 +1,16 @@
+{
+	"admin/services/owrt-full-backup": {
+		"title": "OpenWrt Full Backup",
+		"order": 90,
+		"action": {
+			"type": "call",
+			"module": "luci.controller.owrt_full_backup",
+			"function": "action_open"
+		},
+		"depends": {
+			"fs": {
+				"/www/cgi-bin/owrt-full-backup": "executable"
+			}
+		}
+	}
+}

@@ -107,8 +107,13 @@ ln -sf owrt-full-backup "$(target_path usr/sbin/owrt-backup)"
 install_config
 install_file "www/cgi-bin/owrt-full-backup" 0755
 install_file "usr/lib/lua/luci/controller/owrt_full_backup.lua" 0644
+install_file "usr/share/luci/menu.d/luci-app-owrt-full-backup.json" 0644
 
-rm -rf "$(target_path tmp/luci-indexcache)" "$(target_path tmp/luci-modulecache)" 2>/dev/null || true
+rm -rf "$(target_path tmp/luci-indexcache)" "$(target_path tmp/luci-modulecache)" "$(target_path tmp/luci-indexcache.)"* "$(target_path tmp/luci-modulecache.)"* 2>/dev/null || true
+
+if [ -x "$(target_path etc/init.d/rpcd)" ]; then
+	"$(target_path etc/init.d/rpcd)" restart >/dev/null 2>&1 || true
+fi
 
 if [ -x "$(target_path etc/init.d/uhttpd)" ]; then
 	"$(target_path etc/init.d/uhttpd)" reload >/dev/null 2>&1 || "$(target_path etc/init.d/uhttpd)" restart >/dev/null 2>&1 || true

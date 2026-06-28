@@ -18,6 +18,7 @@ rmf usr/sbin/owrt-full-backup-upload
 rmf usr/sbin/owrt-backup
 rmf www/cgi-bin/owrt-full-backup
 rmf usr/lib/lua/luci/controller/owrt_full_backup.lua
+rmf usr/share/luci/menu.d/luci-app-owrt-full-backup.json
 
 if [ "$PURGE" = "1" ]; then
 	rmf etc/config/fullbackup
@@ -25,7 +26,11 @@ if [ "$PURGE" = "1" ]; then
 	rmdir "$(target_path etc/owrt-full-backup)" 2>/dev/null || true
 fi
 
-rm -rf "$(target_path tmp/luci-indexcache)" "$(target_path tmp/luci-modulecache)" 2>/dev/null || true
+rm -rf "$(target_path tmp/luci-indexcache)" "$(target_path tmp/luci-modulecache)" "$(target_path tmp/luci-indexcache.)"* "$(target_path tmp/luci-modulecache.)"* 2>/dev/null || true
+
+if [ -x "$(target_path etc/init.d/rpcd)" ]; then
+	"$(target_path etc/init.d/rpcd)" restart >/dev/null 2>&1 || true
+fi
 
 if [ -x "$(target_path etc/init.d/uhttpd)" ]; then
 	"$(target_path etc/init.d/uhttpd)" reload >/dev/null 2>&1 || "$(target_path etc/init.d/uhttpd)" restart >/dev/null 2>&1 || true

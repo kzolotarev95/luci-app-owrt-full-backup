@@ -62,12 +62,31 @@ need_cmd() {
 
 make_workdir() {
 	local base
-	base="${TMPDIR:-/tmp}"
+	base="${1:-${TMPDIR:-/tmp}}"
+	[ -d "$base" ] || base="${TMPDIR:-/tmp}"
 	WORKDIR="$(mktemp -d "$base/owrt-full-backup.XXXXXX" 2>/dev/null || true)"
 	if [ -z "$WORKDIR" ] || [ ! -d "$WORKDIR" ]; then
 		WORKDIR="$base/owrt-full-backup.$$"
 		mkdir -p "$WORKDIR" || die "не удалось создать временную папку: $WORKDIR"
 	fi
+}
+
+abs_path() {
+	local path
+	path="$1"
+	if command -v readlink >/dev/null 2>&1; then
+		readlink -f "$path" 2>/dev/null && return
+	fi
+	(cd "$path" 2>/dev/null && pwd -P) || printf '%s\n' "$path"
+}
+
+is_tmp_path() {
+	local path
+	path="$(abs_path "$1")"
+	case "$path" in
+		/tmp|/tmp/*) return 0 ;;
+		*) return 1 ;;
+	esac
 }
 
 uci_get() {
@@ -269,7 +288,7 @@ copy_firmware_image() {
 }
 
 dump_raw_mtd() {
-	local raw line dev name safe
+	local raw line dev name safe out
 	if [ ! -r /proc/mtd ]; then
 		warn "/proc/mtd недоступен; raw MTD dump пропущен"
 		return
@@ -287,7 +306,13 @@ dump_raw_mtd() {
 				safe="$(sanitize "$name")"
 				if [ -e "/dev/$dev" ]; then
 					log "Сохраняю /dev/$dev ($name)"
-					dd if="/dev/$dev" of="$raw/$dev-$safe.bin" bs=64k 2>"$raw/$dev-$safe.dd.log" || warn "не удалось сохранить /dev/$dev"
+					out="$raw/$dev-$safe.bin"
+					if dd if="/dev/$dev" of="$out" bs=64k 2>"$raw/$dev-$safe.dd.log"; then
+						:
+					else
+						rm -f "$out"
+						warn "не удалось сохранить /dev/$dev"
+					fi
 				fi
 				;;
 		esac
@@ -366,7 +391,10 @@ cmd_create() {
 	need_cmd tar
 	need_cmd gzip
 	mkdir -p "$output_dir" || die "не удалось создать папку для архива: $output_dir"
-	make_workdir
+	if [ "$include_raw_mtd" = "1" ] && is_tmp_path "$output_dir"; then
+		die "raw MTD dump нельзя сохранять в /tmp: там обычно мало RAM. Укажи USB/диск, например /mnt/usb, или отключи raw MTD dump."
+	fi
+	make_workdir "$output_dir"
 
 	timestamp="$(date '+%Y%m%d-%H%M%S' 2>/dev/null || date '+%s')"
 	host="$(hostname_safe)"

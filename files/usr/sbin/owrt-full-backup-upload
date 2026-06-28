@@ -3,8 +3,17 @@
 local default_dir = arg[1] or "/tmp"
 local content_type = os.getenv("CONTENT_TYPE") or ""
 local content_length = tonumber(os.getenv("CONTENT_LENGTH") or "0") or 0
+local pending = ""
+local target_tmp = nil
+
+local function cleanup()
+	if target_tmp then
+		os.remove(target_tmp)
+	end
+end
 
 local function fail(message)
+	cleanup()
 	io.stderr:write("ОШИБКА: " .. message .. "\n")
 	os.exit(1)
 end
@@ -28,6 +37,37 @@ local function safe_filename(name)
 	return name
 end
 
+local function trim_crlf(line)
+	return tostring(line or ""):gsub("\r\n$", ""):gsub("\n$", "")
+end
+
+local function read_from_stdin(size)
+	return io.stdin:read(size or 8192)
+end
+
+local function read_line()
+	while true do
+		local pos = pending:find("\n", 1, true)
+		if pos then
+			local line = pending:sub(1, pos)
+			pending = pending:sub(pos + 1)
+			return line
+		end
+
+		local chunk = read_from_stdin(1024)
+		if not chunk or #chunk == 0 then
+			if #pending > 0 then
+				local line = pending
+				pending = ""
+				return line
+			end
+			return nil
+		end
+
+		pending = pending .. chunk
+	end
+end
+
 local boundary = content_type:match('boundary="?([^";]+)"?')
 if not boundary or boundary == "" then
 	fail("multipart boundary не найден")
@@ -37,83 +77,163 @@ if content_length <= 0 then
 	fail("пустой upload")
 end
 
-local body = io.stdin:read(content_length)
-if not body or #body ~= content_length then
-	fail("не удалось прочитать upload полностью")
+local marker = "--" .. boundary
+local delimiter = "\r\n" .. marker
+
+local first_line = trim_crlf(read_line())
+if first_line ~= marker then
+	fail("multipart boundary не найден в теле запроса")
+end
+
+local function read_headers()
+	local headers = {}
+
+	while true do
+		local line = read_line()
+		if not line then
+			fail("не удалось прочитать заголовки upload")
+		end
+
+		line = trim_crlf(line)
+		if line == "" then
+			break
+		end
+
+		headers[#headers + 1] = line
+	end
+
+	return table.concat(headers, "\n")
+end
+
+local function read_part(out, max_text)
+	local keep = #delimiter + 4
+	local buffer = ""
+	local text = {}
+	local text_size = 0
+	local part_size = 0
+
+	local function consume(data)
+		if not data or #data == 0 then
+			return
+		end
+
+		part_size = part_size + #data
+		if out then
+			local wrote, err = out:write(data)
+			if not wrote then
+				fail("не удалось записать upload: " .. tostring(err))
+			end
+			return
+		end
+
+		text_size = text_size + #data
+		if text_size > (max_text or 4096) then
+			fail("поле формы слишком большое")
+		end
+		text[#text + 1] = data
+	end
+
+	while true do
+		local chunk
+		if #pending > 0 then
+			chunk = pending
+			pending = ""
+		else
+			chunk = read_from_stdin(8192)
+		end
+
+		if not chunk then
+			fail("не найден конец multipart upload")
+		end
+
+		buffer = buffer .. chunk
+		local start_pos, end_pos = buffer:find(delimiter, 1, true)
+		if start_pos then
+			consume(buffer:sub(1, start_pos - 1))
+
+			local after = end_pos + 1
+			local final = false
+			if buffer:sub(after, after + 1) == "--" then
+				final = true
+				after = after + 2
+			end
+			if buffer:sub(after, after + 1) == "\r\n" then
+				after = after + 2
+			end
+
+			pending = buffer:sub(after)
+			return final, table.concat(text), part_size
+		end
+
+		if #buffer > keep then
+			consume(buffer:sub(1, #buffer - keep))
+			buffer = buffer:sub(#buffer - keep + 1)
+		end
+	end
 end
 
 local upload_dir = default_dir
-local file_name
-local file_data
-local marker = "--" .. boundary
-local pos = 1
+local saved_path = nil
+local saved_size = 0
+local final = false
 
-while true do
-	local boundary_start, boundary_end = body:find(marker, pos, true)
-	if not boundary_start then
-		break
-	end
+while not final do
+	local headers = read_headers()
+	local disposition = headers:match("[Cc]ontent%-[Dd]isposition:%s*([^\n]+)")
+	local name = disposition and disposition:match('name="([^"]+)"')
+	local filename = disposition and disposition:match('filename="([^"]*)"')
 
-	local after = boundary_end + 1
-	if body:sub(after, after + 1) == "--" then
-		break
-	end
-	if body:sub(after, after + 1) == "\r\n" then
-		after = after + 2
-	end
-
-	local header_end = body:find("\r\n\r\n", after, true)
-	if not header_end then
-		break
-	end
-
-	local headers = body:sub(after, header_end - 1)
-	local data_start = header_end + 4
-	local next_boundary = body:find("\r\n" .. marker, data_start, true)
-	if not next_boundary then
-		break
-	end
-
-	local data = body:sub(data_start, next_boundary - 1)
-	local name = headers:match('name="([^"]+)"')
-	local filename = headers:match('filename="([^"]*)"')
-
-	if name == "upload_dir" and filename == nil then
-		upload_dir = data:gsub("[%z\r\n]", "")
+	if name == "upload_dir" and not filename then
+		local value
+		final, value = read_part(nil, 4096)
+		upload_dir = tostring(value or ""):gsub("[%z\r\n]", "")
 	elseif name == "archive" and filename and filename ~= "" then
-		file_name = safe_filename(filename)
-		file_data = data
+		if not valid_path(upload_dir) then
+			fail("неверная папка для загрузки: " .. tostring(upload_dir))
+		end
+
+		local file_name = safe_filename(filename)
+		if file_name == "" then
+			fail("файл архива не выбран")
+		end
+		if not file_name:match("%.tar%.gz$") then
+			fail("можно загружать только архивы .tar.gz")
+		end
+
+		os.execute("mkdir -p " .. shell_quote(upload_dir))
+
+		local target = upload_dir:gsub("/+$", "") .. "/" .. file_name
+		target_tmp = target .. ".uploading." .. tostring(os.time()) .. "." .. tostring(content_length)
+		local out, err = io.open(target_tmp, "wb")
+		if not out then
+			fail("не удалось открыть файл для записи: " .. target .. ": " .. tostring(err))
+		end
+
+		local _
+		final, _, saved_size = read_part(out, 0)
+		local closed, close_err = out:close()
+		if not closed then
+			fail("не удалось закрыть файл: " .. target .. ": " .. tostring(close_err))
+		end
+		if saved_size <= 0 then
+			fail("файл пустой")
+		end
+
+		local renamed, rename_err = os.rename(target_tmp, target)
+		if not renamed then
+			fail("не удалось сохранить файл: " .. target .. ": " .. tostring(rename_err))
+		end
+
+		target_tmp = nil
+		saved_path = target
+	else
+		final = read_part(nil, 1024)
 	end
-
-	pos = next_boundary + 2
 end
 
-if not valid_path(upload_dir) then
-	fail("неверная папка для загрузки: " .. tostring(upload_dir))
-end
-
-if not file_name or file_name == "" then
+if not saved_path then
 	fail("файл архива не выбран")
 end
 
-if not file_name:match("%.tar%.gz$") then
-	fail("можно загружать только архивы .tar.gz")
-end
-
-if not file_data or #file_data == 0 then
-	fail("файл пустой")
-end
-
-os.execute("mkdir -p " .. shell_quote(upload_dir))
-
-local target = upload_dir:gsub("/+$", "") .. "/" .. file_name
-local out = io.open(target, "wb")
-if not out then
-	fail("не удалось открыть файл для записи: " .. target)
-end
-
-out:write(file_data)
-out:close()
-
-ok("Архив загружен: " .. target)
-ok("Размер: " .. tostring(#file_data) .. " байт")
+ok("Архив загружен: " .. saved_path)
+ok("Размер: " .. tostring(saved_size) .. " байт")
