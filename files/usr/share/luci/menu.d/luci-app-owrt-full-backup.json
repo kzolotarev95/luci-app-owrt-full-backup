@@ -3,11 +3,13 @@
 		"title": "OpenWrt Full Backup",
 		"order": 90,
 		"action": {
-			"type": "call",
-			"module": "luci.controller.owrt_full_backup",
-			"function": "action_open"
+			"type": "view",
+			"path": "owrt_full_backup"
 		},
 		"depends": {
+			"acl": [
+				"luci-app-owrt-full-backup"
+			],
 			"fs": {
 				"/www/cgi-bin/owrt-full-backup": "executable"
 			}

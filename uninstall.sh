@@ -19,6 +19,8 @@ rmf usr/sbin/owrt-backup
 rmf www/cgi-bin/owrt-full-backup
 rmf usr/lib/lua/luci/controller/owrt_full_backup.lua
 rmf usr/share/luci/menu.d/luci-app-owrt-full-backup.json
+rmf usr/share/rpcd/acl.d/luci-app-owrt-full-backup.json
+rmf www/luci-static/resources/view/owrt_full_backup.js
 
 if [ "$PURGE" = "1" ]; then
 	rmf etc/config/fullbackup

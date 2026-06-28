@@ -1,239 +1,278 @@
-#!/usr/bin/lua
+#!/usr/bin/ucode
+'use strict';
 
-local default_dir = arg[1] or "/tmp"
-local content_type = os.getenv("CONTENT_TYPE") or ""
-local content_length = tonumber(os.getenv("CONTENT_LENGTH") or "0") or 0
-local pending = ""
-local target_tmp = nil
+import * as fs from 'fs';
 
-local function cleanup()
-	if target_tmp then
-		os.remove(target_tmp)
-	end
-end
+const default_dir = ARGV[0] || '/tmp';
+const content_type = getenv('CONTENT_TYPE') || '';
+let input_available = +getenv('CONTENT_LENGTH') || 0;
+let input = fs.fdopen(0, 'r');
+let output = fs.fdopen(1, 'w');
+let error = fs.fdopen(2, 'w');
+let pending = '';
+let target_tmp = null;
 
-local function fail(message)
-	cleanup()
-	io.stderr:write("ОШИБКА: " .. message .. "\n")
-	os.exit(1)
-end
+function cleanup() {
+	if (target_tmp)
+		fs.unlink(target_tmp);
+}
 
-local function ok(message)
-	io.stdout:write(message .. "\n")
-end
+function fail(message) {
+	cleanup();
+	error.write('ОШИБКА: ' + message + '\n');
+	exit(1);
+}
 
-local function valid_path(path)
-	return type(path) == "string" and path:match("^/[A-Za-z0-9%._/%-]+$") ~= nil
-end
+function ok(message) {
+	output.write(message + '\n');
+}
 
-local function shell_quote(value)
-	return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
-end
+function valid_path(path) {
+	return type(path) == 'string' && match(path, /^\/[A-Za-z0-9._\/-]+$/);
+}
 
-local function safe_filename(name)
-	name = tostring(name or ""):gsub("\\", "/")
-	name = name:match("([^/]+)$") or ""
-	name = name:gsub("[^A-Za-z0-9%._%-]", "_")
-	return name
-end
+function safe_filename(name) {
+	name = name != null ? '' + name : '';
+	name = replace(name, /\\/g, '/');
+	name = fs.basename(name);
+	return replace(name, /[^A-Za-z0-9._-]/g, '_');
+}
 
-local function trim_crlf(line)
-	return tostring(line or ""):gsub("\r\n$", ""):gsub("\n$", "")
-end
+function trim_crlf(line) {
+	line = line != null ? '' + line : '';
+	line = replace(line, /\r\n$/, '');
+	return replace(line, /\n$/, '');
+}
 
-local function read_from_stdin(size)
-	return io.stdin:read(size or 8192)
-end
+function append_array(array, value) {
+	array[length(array)] = value;
+}
 
-local function read_line()
-	while true do
-		local pos = pending:find("\n", 1, true)
-		if pos then
-			local line = pending:sub(1, pos)
-			pending = pending:sub(pos + 1)
-			return line
-		end
+function concat_array(array, separator) {
+	let result = '';
 
-		local chunk = read_from_stdin(1024)
-		if not chunk or #chunk == 0 then
-			if #pending > 0 then
-				local line = pending
-				pending = ""
-				return line
-			end
-			return nil
-		end
+	for (let i = 0; i < length(array); i++) {
+		if (i > 0)
+			result += separator;
 
-		pending = pending .. chunk
-	end
-end
+		result += array[i];
+	}
 
-local boundary = content_type:match('boundary="?([^";]+)"?')
-if not boundary or boundary == "" then
-	fail("multipart boundary не найден")
-end
+	return result;
+}
 
-if content_length <= 0 then
-	fail("пустой upload")
-end
+function read_from_stdin(size) {
+	if (input_available <= 0)
+		return null;
 
-local marker = "--" .. boundary
-local delimiter = "\r\n" .. marker
+	size = size != null ? size : 8192;
+	let chunk = input.read(min(input_available, size, 8192));
 
-local first_line = trim_crlf(read_line())
-if first_line ~= marker then
-	fail("multipart boundary не найден в теле запроса")
-end
+	if (chunk == null) {
+		input_available = 0;
+		return null;
+	}
 
-local function read_headers()
-	local headers = {}
+	input_available -= length(chunk);
+	return chunk;
+}
 
-	while true do
-		local line = read_line()
-		if not line then
-			fail("не удалось прочитать заголовки upload")
-		end
+function read_line() {
+	while (true) {
+		let pos = index(pending, '\n');
 
-		line = trim_crlf(line)
-		if line == "" then
-			break
-		end
+		if (pos != null && pos >= 0) {
+			let line = substr(pending, 0, pos + 1);
+			pending = substr(pending, pos + 1);
+			return line;
+		}
 
-		headers[#headers + 1] = line
-	end
+		let chunk = read_from_stdin(1024);
 
-	return table.concat(headers, "\n")
-end
+		if (chunk == null) {
+			if (length(pending) > 0) {
+				let line = pending;
+				pending = '';
+				return line;
+			}
 
-local function read_part(out, max_text)
-	local keep = #delimiter + 4
-	local buffer = ""
-	local text = {}
-	local text_size = 0
-	local part_size = 0
+			return null;
+		}
 
-	local function consume(data)
-		if not data or #data == 0 then
-			return
-		end
+		pending += chunk;
+	}
+}
 
-		part_size = part_size + #data
-		if out then
-			local wrote, err = out:write(data)
-			if not wrote then
-				fail("не удалось записать upload: " .. tostring(err))
-			end
-			return
-		end
+let boundary_match = match(content_type, /boundary="?([^";]+)"?/);
+let boundary = boundary_match ? boundary_match[1] : null;
 
-		text_size = text_size + #data
-		if text_size > (max_text or 4096) then
-			fail("поле формы слишком большое")
-		end
-		text[#text + 1] = data
-	end
+if (!boundary)
+	fail('multipart boundary не найден');
 
-	while true do
-		local chunk
-		if #pending > 0 then
-			chunk = pending
-			pending = ""
-		else
-			chunk = read_from_stdin(8192)
-		end
+if (input_available <= 0)
+	fail('пустой upload');
 
-		if not chunk then
-			fail("не найден конец multipart upload")
-		end
+const marker = '--' + boundary;
+const delimiter = '\r\n' + marker;
 
-		buffer = buffer .. chunk
-		local start_pos, end_pos = buffer:find(delimiter, 1, true)
-		if start_pos then
-			consume(buffer:sub(1, start_pos - 1))
+let first_line = trim_crlf(read_line());
+if (first_line != marker)
+	fail('multipart boundary не найден в теле запроса');
 
-			local after = end_pos + 1
-			local final = false
-			if buffer:sub(after, after + 1) == "--" then
-				final = true
-				after = after + 2
-			end
-			if buffer:sub(after, after + 1) == "\r\n" then
-				after = after + 2
-			end
+function read_headers() {
+	let headers = [];
 
-			pending = buffer:sub(after)
-			return final, table.concat(text), part_size
-		end
+	while (true) {
+		let line = read_line();
 
-		if #buffer > keep then
-			consume(buffer:sub(1, #buffer - keep))
-			buffer = buffer:sub(#buffer - keep + 1)
-		end
-	end
-end
+		if (line == null)
+			fail('не удалось прочитать заголовки upload');
 
-local upload_dir = default_dir
-local saved_path = nil
-local saved_size = 0
-local final = false
+		line = trim_crlf(line);
 
-while not final do
-	local headers = read_headers()
-	local disposition = headers:match("[Cc]ontent%-[Dd]isposition:%s*([^\n]+)")
-	local name = disposition and disposition:match('name="([^"]+)"')
-	local filename = disposition and disposition:match('filename="([^"]*)"')
+		if (line == '')
+			break;
 
-	if name == "upload_dir" and not filename then
-		local value
-		final, value = read_part(nil, 4096)
-		upload_dir = tostring(value or ""):gsub("[%z\r\n]", "")
-	elseif name == "archive" and filename and filename ~= "" then
-		if not valid_path(upload_dir) then
-			fail("неверная папка для загрузки: " .. tostring(upload_dir))
-		end
+		append_array(headers, line);
+	}
 
-		local file_name = safe_filename(filename)
-		if file_name == "" then
-			fail("файл архива не выбран")
-		end
-		if not file_name:match("%.tar%.gz$") then
-			fail("можно загружать только архивы .tar.gz")
-		end
+	return concat_array(headers, '\n');
+}
 
-		os.execute("mkdir -p " .. shell_quote(upload_dir))
+function read_part(out, max_text) {
+	let keep = length(delimiter) + 4;
+	let buffer = '';
+	let text = [];
+	let text_size = 0;
+	let part_size = 0;
 
-		local target = upload_dir:gsub("/+$", "") .. "/" .. file_name
-		target_tmp = target .. ".uploading." .. tostring(os.time()) .. "." .. tostring(content_length)
-		local out, err = io.open(target_tmp, "wb")
-		if not out then
-			fail("не удалось открыть файл для записи: " .. target .. ": " .. tostring(err))
-		end
+	function consume(data) {
+		if (data == null || length(data) == 0)
+			return;
 
-		local _
-		final, _, saved_size = read_part(out, 0)
-		local closed, close_err = out:close()
-		if not closed then
-			fail("не удалось закрыть файл: " .. target .. ": " .. tostring(close_err))
-		end
-		if saved_size <= 0 then
-			fail("файл пустой")
-		end
+		part_size += length(data);
 
-		local renamed, rename_err = os.rename(target_tmp, target)
-		if not renamed then
-			fail("не удалось сохранить файл: " .. target .. ": " .. tostring(rename_err))
-		end
+		if (out) {
+			out.write(data);
+			return;
+		}
 
-		target_tmp = nil
-		saved_path = target
-	else
-		final = read_part(nil, 1024)
-	end
-end
+		text_size += length(data);
 
-if not saved_path then
-	fail("файл архива не выбран")
-end
+		max_text = max_text != null ? max_text : 4096;
 
-ok("Архив загружен: " .. saved_path)
-ok("Размер: " .. tostring(saved_size) .. " байт")
+		if (text_size > max_text)
+			fail('поле формы слишком большое');
+
+		append_array(text, data);
+	}
+
+	while (true) {
+		let chunk;
+
+		if (length(pending) > 0) {
+			chunk = pending;
+			pending = '';
+		}
+		else {
+			chunk = read_from_stdin(8192);
+		}
+
+		if (chunk == null)
+			fail('не найден конец multipart upload');
+
+		buffer += chunk;
+
+		let start_pos = index(buffer, delimiter);
+
+		if (start_pos != null && start_pos >= 0) {
+			consume(substr(buffer, 0, start_pos));
+
+			let after = start_pos + length(delimiter);
+			let final = false;
+
+			if (substr(buffer, after, 2) == '--') {
+				final = true;
+				after += 2;
+			}
+
+			if (substr(buffer, after, 2) == '\r\n')
+				after += 2;
+
+			pending = substr(buffer, after);
+			return [ final, concat_array(text, ''), part_size ];
+		}
+
+		if (length(buffer) > keep) {
+			consume(substr(buffer, 0, length(buffer) - keep));
+			buffer = substr(buffer, length(buffer) - keep);
+		}
+	}
+}
+
+let upload_dir = default_dir;
+let saved_path = null;
+let saved_size = 0;
+let final = false;
+
+while (!final) {
+	let headers = read_headers();
+	let disposition_match = match(headers, /[Cc]ontent-[Dd]isposition:\s*([^\n]+)/);
+	let disposition = disposition_match ? disposition_match[1] : null;
+	let name_match = disposition ? match(disposition, /name="([^"]+)"/) : null;
+	let filename_match = disposition ? match(disposition, /filename="([^"]*)"/) : null;
+	let name = name_match ? name_match[1] : null;
+	let filename = filename_match ? filename_match[1] : null;
+
+	if (name == 'upload_dir' && filename == null) {
+		let part = read_part(null, 4096);
+		final = part[0];
+		upload_dir = part[1] != null ? '' + part[1] : '';
+		upload_dir = replace(upload_dir, /[\r\n]/g, '');
+	}
+	else if (name == 'archive' && filename != null && filename != '') {
+		if (!valid_path(upload_dir))
+			fail('неверная папка для загрузки: ' + upload_dir);
+
+		let file_name = safe_filename(filename);
+
+		if (!file_name)
+			fail('файл архива не выбран');
+
+		if (!match(file_name, /\.tar\.gz$/))
+			fail('можно загружать только архивы .tar.gz');
+
+		fs.mkdir(upload_dir, 0755);
+
+		let target = replace(upload_dir, /\/+$/, '') + '/' + file_name;
+		target_tmp = target + '.uploading.' + time() + '.' + input_available;
+
+		let out = fs.open(target_tmp, 'w', 384);
+		if (!out)
+			fail('не удалось открыть файл для записи: ' + target);
+
+		let part = read_part(out, 0);
+		final = part[0];
+		saved_size = part[2];
+		out.close();
+
+		if (saved_size <= 0)
+			fail('файл пустой');
+
+		if (!fs.rename(target_tmp, target))
+			fail('не удалось сохранить файл: ' + target);
+
+		target_tmp = null;
+		saved_path = target;
+	}
+	else {
+		let part = read_part(null, 1024);
+		final = part[0];
+	}
+}
+
+if (!saved_path)
+	fail('файл архива не выбран');
+
+ok('Архив загружен: ' + saved_path);
+ok('Размер: ' + saved_size + ' байт');

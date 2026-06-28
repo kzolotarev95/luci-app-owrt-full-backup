@@ -67,18 +67,20 @@ wget -O - "https://raw.githubusercontent.com/kzolotarev95/luci-app-owrt-full-bac
     │   ├── sbin
     │   │   ├── owrt-full-backup
     │   │   └── owrt-full-backup-upload
-    │   ├── lib
-    │   │   └── lua
-    │   │       └── luci
-    │   │           └── controller
-    │   │               └── owrt_full_backup.lua
     │   └── share
-    │       └── luci
-    │           └── menu.d
+    │       ├── luci
+    │       │   └── menu.d
+    │       │       └── luci-app-owrt-full-backup.json
+    │       └── rpcd
+    │           └── acl.d
     │               └── luci-app-owrt-full-backup.json
     └── www
-        └── cgi-bin
-            └── owrt-full-backup
+        ├── cgi-bin
+        │   └── owrt-full-backup
+        └── luci-static
+            └── resources
+                └── view
+                    └── owrt_full_backup.js
 ```
 
 ## Что ставится на роутер
@@ -86,10 +88,11 @@ wget -O - "https://raw.githubusercontent.com/kzolotarev95/luci-app-owrt-full-bac
 | Путь | Назначение |
 | --- | --- |
 | `/usr/sbin/owrt-full-backup` | CLI-команда для создания, просмотра и восстановления архива |
-| `/usr/sbin/owrt-full-backup-upload` | Потоковая загрузка `.tar.gz` из браузера без удержания всего файла в RAM |
+| `/usr/sbin/owrt-full-backup-upload` | Потоковая загрузка `.tar.gz` из браузера без Lua |
 | `/www/cgi-bin/owrt-full-backup` | Веб-панель |
-| `/usr/lib/lua/luci/controller/owrt_full_backup.lua` | Редирект из LuCI в веб-панель с приватным ключом |
+| `/www/luci-static/resources/view/owrt_full_backup.js` | LuCI-страница-редирект без Lua runtime |
 | `/usr/share/luci/menu.d/luci-app-owrt-full-backup.json` | Пункт меню LuCI для OpenWrt 22-25 |
+| `/usr/share/rpcd/acl.d/luci-app-owrt-full-backup.json` | Доступ LuCI к приватному веб-ключу |
 | `/etc/config/fullbackup` | Настройки по умолчанию |
 | `/etc/owrt-full-backup/web.key` | Приватный ключ веб-панели |
 
@@ -158,6 +161,22 @@ rm -rf /tmp/luci-indexcache /tmp/luci-modulecache /tmp/luci-indexcache.* /tmp/lu
 ```
 
 Потом обнови страницу LuCI или выйди из LuCI и зайди снова. Прямая приватная ссылка из вывода `install.sh` тоже всегда работает.
+
+## Если в LuCI ошибка `No Lua runtime installed`
+
+Поставь свежую версию. Модуль больше не использует Lua-controller для пункта меню LuCI:
+
+```sh
+wget -O - "https://raw.githubusercontent.com/kzolotarev95/luci-app-owrt-full-backup/main/install.sh?v=$(date +%s)" | sh
+```
+
+Установщик удалит старый файл:
+
+```text
+/usr/lib/lua/luci/controller/owrt_full_backup.lua
+```
+
+И заменит его на LuCI JS-view + rpcd ACL.
 
 ## Если ошибка `No space left on device`
 
