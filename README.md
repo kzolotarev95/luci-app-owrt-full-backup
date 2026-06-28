@@ -9,8 +9,6 @@
 [![No Lua runtime](https://img.shields.io/badge/LuCI-no%20Lua%20runtime-111827?style=for-the-badge)](#если-в-luci-ошибка-no-lua-runtime-installed)
 [![Install](https://img.shields.io/badge/install-one%20command-2563EB?style=for-the-badge)](#быстрая-установка)
 
-[Telegram](https://t.me/kzolotarev95) · [GitHub автора](https://github.com/kzolotarev95)
-
 </div>
 
 ## Зачем нужен модуль
