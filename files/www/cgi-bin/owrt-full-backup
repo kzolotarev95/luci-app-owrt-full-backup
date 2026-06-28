@@ -151,6 +151,15 @@ format_seconds() {
 	fi
 }
 
+localize_log() {
+	sed \
+		-e 's/^Старт: /Начало: /' \
+		-e 's/^Код выхода: 0$/Готово./' \
+		-e 's/Sun/Вс/g' -e 's/Mon/Пн/g' -e 's/Tue/Вт/g' -e 's/Wed/Ср/g' -e 's/Thu/Чт/g' -e 's/Fri/Пт/g' -e 's/Sat/Сб/g' \
+		-e 's/Jan/Янв/g' -e 's/Feb/Фев/g' -e 's/Mar/Мар/g' -e 's/Apr/Апр/g' -e 's/May/Май/g' -e 's/Jun/Июн/g' \
+		-e 's/Jul/Июл/g' -e 's/Aug/Авг/g' -e 's/Sep/Сен/g' -e 's/Oct/Окт/g' -e 's/Nov/Ноя/g' -e 's/Dec/Дек/g'
+}
+
 download_file() {
 	local file base
 	file="$(param file)"
@@ -272,7 +281,7 @@ start_backend_job() {
 
 	cat >"$script" <<EOF
 #!/bin/sh
-echo "Старт: \$(date)"
+echo "Начало: \$(date '+%d.%m.%Y %H:%M:%S')"
 echo "Создание бэкапа запущено."
 $cmd
 code="\$?"
@@ -531,7 +540,7 @@ render_job_panel() {
 			;;
 	esac
 
-	printf '<section class="panel span12 job-card %s">' "$state_class"
+	printf '<section class="panel span6 job-card %s">' "$state_class"
 	printf '<div class="section-head"><div><h2>%s</h2><p>Статус: %s · Время: <span id="job-timer" data-start="%s">%s</span>%s' "$(h "$title")" "$(h "$state_text")" "$(h "$started")" "$(h "$elapsed_text")" "$(h "$estimate_text")"
 	if [ -n "$code" ] && [ "$code" != "0" ]; then
 		printf ' · Код ошибки: %s' "$(h "$code")"
@@ -540,7 +549,7 @@ render_job_panel() {
 	printf '<p>%s</p><div class="console-title">Журнал выполнения</div>' "$(h "$job_note")"
 	printf '<pre class="console">'
 	if [ -r "$log" ]; then
-		tail -n 120 "$log" | sed 's/^Код выхода: 0$/Готово./' | html_escape
+		tail -n 120 "$log" | localize_log | html_escape
 	else
 		printf 'Лог пока пуст. Подожди пару секунд.\n' | html_escape
 	fi
@@ -582,8 +591,8 @@ page() {
 $refresh_meta
 <title>OpenWrt Full Backup</title>
 <style>
-:root { color-scheme: light dark; --bg: #f6f7f9; --panel: #fff; --text: #15181c; --muted: #667085; --line: #d9dee7; --accent: #1769e0; --bad: #b42318; --ok: #067647; }
-@media (prefers-color-scheme: dark) { :root { --bg: #111418; --panel: #181d23; --text: #eef2f6; --muted: #a6b0bf; --line: #2d3642; --accent: #6aa4ff; --bad: #ff9b91; --ok: #7ee0a3; } }
+:root { color-scheme: light dark; --bg: #f6f7f9; --panel: #fff; --text: #15181c; --muted: #667085; --line: #d9dee7; --accent: #22c55e; --accent-hover: #16a34a; --button-text: #052e16; --bad: #b42318; --ok: #067647; }
+@media (prefers-color-scheme: dark) { :root { --bg: #111418; --panel: #181d23; --text: #eef2f6; --muted: #a6b0bf; --line: #2d3642; --accent: #22c55e; --accent-hover: #16a34a; --button-text: #052e16; --bad: #ff9b91; --ok: #7ee0a3; } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 main { max-width: 1280px; margin: 0 auto; padding: 18px; display: grid; gap: 14px; }
@@ -604,9 +613,11 @@ p { margin: 6px 0; color: var(--muted); }
 label { display: block; margin: 9px 0 4px; font-weight: 600; }
 input[type=text], input[type=number] { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--text); padding: 9px; }
 .checks label { font-weight: 500; display: flex; gap: 8px; align-items: center; margin: 8px 0; }
-button, .button { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; padding: 8px 12px; text-decoration: none; font-weight: 700; cursor: pointer; }
+button, .button { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; border: 0; border-radius: 6px; background: var(--accent); color: var(--button-text); padding: 8px 12px; text-decoration: none; font-weight: 700; cursor: pointer; }
+button:hover, .button:hover { background: var(--accent-hover); }
 .small { min-height: 30px; padding: 6px 9px; font-size: 12px; }
-.danger { background: var(--bad); }
+.danger { background: var(--bad); color: #fff; }
+.danger:hover { background: var(--bad); }
 .muted { color: var(--muted); }
 .file-input { width: 100%; border: 1px dashed var(--line); border-radius: 6px; padding: 12px; color: var(--muted); }
 .result-card, .job-card { border-left: 4px solid var(--accent); }
@@ -656,12 +667,15 @@ EOF
 		printf '</pre></section>'
 	fi
 
+	cat <<EOF
+<section class="grid">
+EOF
+
 	if [ -n "$job_id" ]; then
 		render_job_panel "$job_id"
 	fi
 
 	cat <<EOF
-<section class="grid">
 <div class="panel span6 device-card">
 <h2>Устройство</h2>
 <div class="status">
