@@ -1,0 +1,119 @@
+#!/usr/bin/lua
+
+local default_dir = arg[1] or "/tmp"
+local content_type = os.getenv("CONTENT_TYPE") or ""
+local content_length = tonumber(os.getenv("CONTENT_LENGTH") or "0") or 0
+
+local function fail(message)
+	io.stderr:write("ОШИБКА: " .. message .. "\n")
+	os.exit(1)
+end
+
+local function ok(message)
+	io.stdout:write(message .. "\n")
+end
+
+local function valid_path(path)
+	return type(path) == "string" and path:match("^/[A-Za-z0-9%._/%-]+$") ~= nil
+end
+
+local function shell_quote(value)
+	return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
+end
+
+local function safe_filename(name)
+	name = tostring(name or ""):gsub("\\", "/")
+	name = name:match("([^/]+)$") or ""
+	name = name:gsub("[^A-Za-z0-9%._%-]", "_")
+	return name
+end
+
+local boundary = content_type:match('boundary="?([^";]+)"?')
+if not boundary or boundary == "" then
+	fail("multipart boundary не найден")
+end
+
+if content_length <= 0 then
+	fail("пустой upload")
+end
+
+local body = io.stdin:read(content_length)
+if not body or #body ~= content_length then
+	fail("не удалось прочитать upload полностью")
+end
+
+local upload_dir = default_dir
+local file_name
+local file_data
+local marker = "--" .. boundary
+local pos = 1
+
+while true do
+	local boundary_start, boundary_end = body:find(marker, pos, true)
+	if not boundary_start then
+		break
+	end
+
+	local after = boundary_end + 1
+	if body:sub(after, after + 1) == "--" then
+		break
+	end
+	if body:sub(after, after + 1) == "\r\n" then
+		after = after + 2
+	end
+
+	local header_end = body:find("\r\n\r\n", after, true)
+	if not header_end then
+		break
+	end
+
+	local headers = body:sub(after, header_end - 1)
+	local data_start = header_end + 4
+	local next_boundary = body:find("\r\n" .. marker, data_start, true)
+	if not next_boundary then
+		break
+	end
+
+	local data = body:sub(data_start, next_boundary - 1)
+	local name = headers:match('name="([^"]+)"')
+	local filename = headers:match('filename="([^"]*)"')
+
+	if name == "upload_dir" and filename == nil then
+		upload_dir = data:gsub("[%z\r\n]", "")
+	elseif name == "archive" and filename and filename ~= "" then
+		file_name = safe_filename(filename)
+		file_data = data
+	end
+
+	pos = next_boundary + 2
+end
+
+if not valid_path(upload_dir) then
+	fail("неверная папка для загрузки: " .. tostring(upload_dir))
+end
+
+if not file_name or file_name == "" then
+	fail("файл архива не выбран")
+end
+
+if not file_name:match("%.tar%.gz$") then
+	fail("можно загружать только архивы .tar.gz")
+end
+
+if not file_data or #file_data == 0 then
+	fail("файл пустой")
+end
+
+os.execute("mkdir -p " .. shell_quote(upload_dir))
+
+local target = upload_dir:gsub("/+$", "") .. "/" .. file_name
+local out = io.open(target, "wb")
+if not out then
+	fail("не удалось открыть файл для записи: " .. target)
+end
+
+out:write(file_data)
+out:close()
+
+ok("Архив загружен: " .. target)
+ok("Размер: " .. tostring(#file_data) .. " байт")

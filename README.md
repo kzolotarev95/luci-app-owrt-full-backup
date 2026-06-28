@@ -7,6 +7,7 @@
 ## Что устанавливается
 
 - `/usr/sbin/owrt-full-backup` - консольная команда;
+- `/usr/sbin/owrt-full-backup-upload` - загрузка архивов из веб-панели;
 - `/www/cgi-bin/owrt-full-backup` - веб-панель;
 - `/usr/lib/lua/luci/controller/owrt_full_backup.lua` - пункт меню LuCI;
 - `/etc/config/fullbackup` - настройки по умолчанию;
@@ -55,6 +56,7 @@ http://192.168.1.1/cgi-bin/owrt-full-backup?key=SECRET
 ## Возможности веб-панели
 
 - создать полный архив бэкапа;
+- загрузить архив бэкапа с компьютера на роутер;
 - скачать готовый архив;
 - посмотреть содержимое/метаданные архива;
 - восстановить настройки;

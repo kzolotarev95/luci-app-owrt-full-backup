@@ -60,6 +60,9 @@ read_request() {
 	local post_data
 	: >"$PARAMS_FILE"
 	parse_params "${QUERY_STRING:-}"
+	case "${CONTENT_TYPE:-}" in
+		multipart/form-data*) return ;;
+	esac
 	if [ "${REQUEST_METHOD:-GET}" = "POST" ] && [ -n "${CONTENT_LENGTH:-}" ]; then
 		post_data="$(dd bs=1 count="$CONTENT_LENGTH" 2>/dev/null)"
 		parse_params "$post_data"
@@ -188,6 +191,20 @@ handle_delete_backup() {
 	fi
 }
 
+handle_upload_backup() {
+	RESULT_TITLE="Загрузка архива"
+	RESULT_FILE="${TMPDIR:-/tmp}/owrt-full-backup-result.$$"
+
+	if ! command -v owrt-full-backup-upload >/dev/null 2>&1; then
+		RESULT_CODE=127
+		printf 'Помощник загрузки не установлен: owrt-full-backup-upload\n' >"$RESULT_FILE"
+		return
+	fi
+
+	owrt-full-backup-upload "$(config_get output_dir /tmp)" >"$RESULT_FILE" 2>&1
+	RESULT_CODE="$?"
+}
+
 run_backend() {
 	RESULT_TITLE="$1"
 	shift
@@ -308,12 +325,23 @@ handle_action() {
 		restore) handle_restore ;;
 		save_defaults) handle_save_defaults ;;
 		delete_backup) handle_delete_backup ;;
+		upload_backup) handle_upload_backup ;;
 	esac
 }
 
 system_value() {
+	local value
 	case "$1" in
-		host) hostname 2>/dev/null || printf 'openwrt' ;;
+		host)
+			if command -v uci >/dev/null 2>&1; then
+				value="$(uci -q get system.@system[0].hostname 2>/dev/null || true)"
+				[ -n "$value" ] && {
+					printf '%s' "$value"
+					return
+				}
+			fi
+			hostname 2>/dev/null || printf 'openwrt'
+			;;
 		release)
 			if [ -r /etc/openwrt_release ]; then
 				. /etc/openwrt_release 2>/dev/null
@@ -398,6 +426,7 @@ button, .button { display: inline-flex; align-items: center; justify-content: ce
 .small { min-height: 30px; padding: 6px 9px; font-size: 12px; }
 .danger { background: var(--bad); }
 .muted { color: var(--muted); }
+.file-input { width: 100%; border: 1px dashed var(--line); border-radius: 6px; padding: 12px; color: var(--muted); }
 code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 pre { overflow: auto; background: rgba(127,127,127,.12); border-radius: 6px; padding: 10px; }
 table { width: 100%; border-collapse: collapse; }
@@ -456,6 +485,13 @@ EOF
 <label><input type="checkbox" name="include_raw_mtd" value="1"$(checkbox_attr "$include_raw_mtd")> добавить raw MTD dump</label>
 </div>
 <button type="submit">Создать бэкап</button>
+</form>
+
+<form class="panel span12" method="post" enctype="multipart/form-data" action="$(self_url)?key=$key&amp;action=upload_backup">
+<h2>Загрузить архив бэкапа</h2>
+<p>Выбери архив <code>.tar.gz</code> с компьютера. Он будет сохранен в $(h "$output_dir") и появится в списке архивов.</p>
+<input class="file-input" type="file" name="archive" accept=".tar.gz,application/gzip,application/x-gzip">
+<button type="submit">Загрузить архив</button>
 </form>
 
 <div class="panel span12">

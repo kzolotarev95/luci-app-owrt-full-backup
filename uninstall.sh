@@ -14,6 +14,7 @@ rmf() {
 }
 
 rmf usr/sbin/owrt-full-backup
+rmf usr/sbin/owrt-full-backup-upload
 rmf usr/sbin/owrt-backup
 rmf www/cgi-bin/owrt-full-backup
 rmf usr/lib/lua/luci/controller/owrt_full_backup.lua

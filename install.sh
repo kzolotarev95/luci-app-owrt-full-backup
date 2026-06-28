@@ -102,6 +102,7 @@ router_ip() {
 }
 
 install_file "usr/sbin/owrt-full-backup" 0755
+install_file "usr/sbin/owrt-full-backup-upload" 0755
 ln -sf owrt-full-backup "$(target_path usr/sbin/owrt-backup)"
 install_config
 install_file "www/cgi-bin/owrt-full-backup" 0755
