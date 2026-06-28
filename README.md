@@ -6,10 +6,6 @@
 
 Веб-панель и CLI-утилита для полного бэкапа OpenWrt. Сборка `.ipk` не нужна: модуль ставится прямо с GitHub на роутер.
 
-Автор: [byzks95 / kzolotarev95](https://github.com/kzolotarev95)
-
-Telegram: [t.me/kzolotarev95](https://t.me/kzolotarev95)
-
 ## Что умеет
 
 - Создает архив бэкапа через веб-панель LuCI или через SSH.
