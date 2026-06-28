@@ -6,5 +6,8 @@
 .gitignore text eol=lf
 LICENSE text eol=lf
 Makefile text eol=lf
-package/openwrt-full-backup/files/usr/sbin/owrt-full-backup text eol=lf
-package/openwrt-full-backup/files/etc/config/fullbackup text eol=lf
+install.sh text eol=lf
+uninstall.sh text eol=lf
+files/usr/sbin/owrt-full-backup text eol=lf
+files/etc/config/fullbackup text eol=lf
+files/www/cgi-bin/owrt-full-backup text eol=lf

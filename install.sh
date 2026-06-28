@@ -1,0 +1,116 @@
+#!/bin/sh
+
+set -eu
+
+RAW_URL="${RAW_URL:-https://raw.githubusercontent.com/kzolotarev95/openwrt-full-backup/main}"
+ROOT="${ROOT:-/}"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd)"
+
+info() {
+	printf '%s\n' "$*"
+}
+
+die() {
+	printf 'ERROR: %s\n' "$*" >&2
+	exit 1
+}
+
+target_path() {
+	printf '%s/%s' "${ROOT%/}" "$1"
+}
+
+fetch() {
+	local src dst
+	src="$1"
+	dst="$2"
+	if command -v wget >/dev/null 2>&1; then
+		wget -O "$dst" "$src"
+	elif command -v curl >/dev/null 2>&1; then
+		curl -fsSL "$src" -o "$dst"
+	else
+		die "wget or curl is required for remote install"
+	fi
+}
+
+install_file() {
+	local rel mode src dst
+	rel="$1"
+	mode="$2"
+	src="$SCRIPT_DIR/files/$rel"
+	dst="$(target_path "$rel")"
+	mkdir -p "$(dirname "$dst")"
+	if [ -f "$src" ]; then
+		cp "$src" "$dst"
+	else
+		fetch "$RAW_URL/files/$rel" "$dst"
+	fi
+	chmod "$mode" "$dst"
+}
+
+install_config() {
+	local rel src dst
+	rel="etc/config/fullbackup"
+	src="$SCRIPT_DIR/files/$rel"
+	dst="$(target_path "$rel")"
+	mkdir -p "$(dirname "$dst")"
+	if [ -f "$dst" ]; then
+		info "Keeping existing $dst"
+		return
+	fi
+	if [ -f "$src" ]; then
+		cp "$src" "$dst"
+	else
+		fetch "$RAW_URL/files/$rel" "$dst"
+	fi
+	chmod 0644 "$dst"
+}
+
+make_key() {
+	local key_dir key_file key
+	key_dir="$(target_path etc/owrt-full-backup)"
+	key_file="$key_dir/web.key"
+	mkdir -p "$key_dir"
+	if [ ! -s "$key_file" ]; then
+		if command -v hexdump >/dev/null 2>&1; then
+			key="$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | hexdump -v -e '16/1 "%02x"')"
+		else
+			key="$(date +%s)-$$"
+		fi
+		printf '%s\n' "$key" >"$key_file"
+	fi
+	chmod 0600 "$key_file"
+	cat "$key_file"
+}
+
+router_ip() {
+	local ip
+	if command -v uci >/dev/null 2>&1; then
+		ip="$(uci -q get network.lan.ipaddr 2>/dev/null || true)"
+		if [ -n "$ip" ]; then
+			printf '%s\n' "$ip"
+			return
+		fi
+	fi
+	ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+	if [ -n "$ip" ]; then
+		printf '%s\n' "$ip"
+		return
+	fi
+	printf '192.168.1.1'
+}
+
+install_file "usr/sbin/owrt-full-backup" 0755
+ln -sf owrt-full-backup "$(target_path usr/sbin/owrt-backup)"
+install_config
+install_file "www/cgi-bin/owrt-full-backup" 0755
+
+if [ -x "$(target_path etc/init.d/uhttpd)" ]; then
+	"$(target_path etc/init.d/uhttpd)" reload >/dev/null 2>&1 || "$(target_path etc/init.d/uhttpd)" restart >/dev/null 2>&1 || true
+fi
+
+key="$(make_key)"
+ip="$(router_ip)"
+
+info "Installed OpenWrt Full Backup web panel."
+info "Open: http://$ip/cgi-bin/owrt-full-backup?key=$key"
+info "CLI:  owrt-full-backup create -o /mnt/usb"

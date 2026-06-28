@@ -1,101 +1,97 @@
-# openwrt-full-backup
+# OpenWrt Full Backup Web
 
-OpenWrt package overlay for creating and restoring a single backup archive with:
+Direct web panel for OpenWrt backup and restore. No OpenWrt buildroot package or `.ipk` build is required.
 
-- sysupgrade configuration backup;
-- installed package list and opkg metadata;
-- OpenWrt release, board, mount, partition and UCI metadata;
-- optional `/overlay/upper` snapshot;
-- optional `/rom` read-only rootfs snapshot;
-- optional copy of a sysupgrade firmware image;
-- optional raw MTD dumps for same-device disaster recovery.
+It installs:
 
-The scripts target OpenWrt `/bin/sh` (BusyBox ash) and are intended for OpenWrt 22.x, 23.x, 24.x and 25.x.
+- `/usr/sbin/owrt-full-backup` command line helper;
+- `/www/cgi-bin/owrt-full-backup` web panel;
+- `/etc/config/fullbackup` defaults;
+- `/etc/owrt-full-backup/web.key` secret web key.
 
-## Build
+Target: OpenWrt 22.x, 23.x, 24.x and 25.x.
 
-Copy this repository into an OpenWrt build tree, or copy `package/openwrt-full-backup` into the build tree `package/` directory.
+## Install From Git
 
 ```sh
-make menuconfig
-# Utilities -> openwrt-full-backup
-make package/openwrt-full-backup/compile V=s
+git clone https://github.com/kzolotarev95/openwrt-full-backup.git
+cd openwrt-full-backup
+sh install.sh
 ```
 
-The package installs two commands:
+One-line install:
 
 ```sh
-owrt-full-backup
-owrt-backup
+wget -O - https://raw.githubusercontent.com/kzolotarev95/openwrt-full-backup/main/install.sh | sh
 ```
 
-## Create Backup
+The installer prints a private panel link:
 
-Recommended backup to USB or another persistent mount:
+```text
+http://192.168.1.1/cgi-bin/owrt-full-backup?key=SECRET
+```
+
+Keep this link private.
+
+## Web Panel
+
+The panel can:
+
+- create a full backup archive;
+- download created archives;
+- inspect an existing archive;
+- restore configs;
+- optionally reinstall saved package list;
+- optionally restore overlay;
+- optionally flash firmware image from the archive;
+- save default backup settings.
+
+Restore from the web panel does not reinstall packages unless you tick that checkbox.
+
+## Remove
+
+From a cloned repo:
+
+```sh
+sh uninstall.sh
+```
+
+One-line remove:
+
+```sh
+wget -O - https://raw.githubusercontent.com/kzolotarev95/openwrt-full-backup/main/uninstall.sh | sh
+```
+
+Remove config and web key too:
+
+```sh
+wget -O - https://raw.githubusercontent.com/kzolotarev95/openwrt-full-backup/main/uninstall.sh | PURGE=1 sh
+```
+
+Backup archives are not deleted by uninstall.
+
+## CLI Examples
+
+Create backup to USB:
 
 ```sh
 owrt-full-backup create -o /mnt/usb
 ```
 
-Include the exact sysupgrade image if you have it on the router:
+Include firmware image if it is already on the router:
 
 ```sh
 owrt-full-backup create -o /mnt/usb --firmware-image /tmp/openwrt-sysupgrade.bin
 ```
 
-Include the read-only firmware root filesystem snapshot:
+Inspect backup:
 
 ```sh
-owrt-full-backup create -o /mnt/usb --include-rom
+owrt-full-backup inspect /mnt/usb/router-owrt-full-backup.tar.gz
 ```
 
-Create a same-device raw flash dump too:
+Restore configs only:
 
 ```sh
-owrt-full-backup create -o /mnt/usb --include-raw-mtd
+owrt-full-backup restore /mnt/usb/router-owrt-full-backup.tar.gz --yes --no-packages
 ```
-
-Raw MTD dumps are not portable between different models or partition layouts.
-
-## Restore
-
-Safe restore mode restores configs and reinstalls packages from feeds:
-
-```sh
-owrt-full-backup restore /mnt/usb/router-backup.tar.gz --yes
-```
-
-Restore only configs:
-
-```sh
-owrt-full-backup restore /mnt/usb/router-backup.tar.gz --yes --no-packages
-```
-
-Restore the overlay snapshot too, only on the same device and preferably the same OpenWrt release:
-
-```sh
-owrt-full-backup restore /mnt/usb/router-backup.tar.gz --yes --overlay
-```
-
-Flash firmware from the archive:
-
-```sh
-owrt-full-backup restore /mnt/usb/router-backup.tar.gz --yes --flash-firmware
-```
-
-Firmware flashing uses `sysupgrade` and reboots the device. The original OpenWrt sysupgrade image is usually not stored on the router, so include it at backup time with `--firmware-image` if you need this.
-
-## Default Config
-
-The package installs `/etc/config/fullbackup`:
-
-```uci
-config backup 'main'
-	option output_dir '/tmp'
-	option include_overlay '1'
-	option include_rom '0'
-	option include_raw_mtd '0'
-	option keep_days '0'
-```
-
-Use `/tmp` only for quick tests. Real backups should go to USB, network storage, or a mounted persistent disk.

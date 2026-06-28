@@ -1,6 +1,7 @@
 *.ipk
 *.tar.gz
 *.tar.gz.sha256
+.test-output/
 build_dir/
 bin/
 dl/
