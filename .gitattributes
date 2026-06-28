@@ -1,0 +1,10 @@
+* text=auto
+
+*.md text eol=lf
+*.txt text eol=lf
+.gitattributes text eol=lf
+.gitignore text eol=lf
+LICENSE text eol=lf
+Makefile text eol=lf
+package/openwrt-full-backup/files/usr/sbin/owrt-full-backup text eol=lf
+package/openwrt-full-backup/files/etc/config/fullbackup text eol=lf

@@ -1,0 +1,665 @@
+#!/bin/sh
+
+VERSION="1.0.0"
+FORMAT="owrt-full-backup-v1"
+DEFAULT_OUTPUT_DIR="/tmp"
+WORKDIR=""
+
+log() {
+	printf '%s\n' "$*" >&2
+}
+
+warn() {
+	printf 'WARNING: %s\n' "$*" >&2
+}
+
+die() {
+	printf 'ERROR: %s\n' "$*" >&2
+	exit 1
+}
+
+cleanup() {
+	if [ -n "$WORKDIR" ] && [ -d "$WORKDIR" ]; then
+		rm -rf "$WORKDIR"
+	fi
+}
+
+trap cleanup EXIT INT TERM
+
+usage() {
+	cat <<'EOF'
+Usage:
+  owrt-full-backup create [options]
+  owrt-full-backup restore <archive.tar.gz> [options]
+  owrt-full-backup inspect <archive.tar.gz>
+  owrt-full-backup help
+
+Create options:
+  -o, --output-dir DIR       Directory for the final backup archive
+  -n, --name NAME            Archive base name without .tar.gz
+      --no-overlay           Do not include /overlay/upper snapshot
+      --include-rom          Include read-only /rom rootfs snapshot
+      --firmware-image FILE  Copy a sysupgrade image into the backup
+      --include-raw-mtd      Also dump /dev/mtd* partitions into the backup
+
+Restore options:
+      --yes                  Do not ask for confirmation
+      --no-configs           Do not restore sysupgrade config backup
+      --no-packages          Do not reinstall packages from the saved list
+      --overlay              Restore /overlay/upper snapshot to /
+      --flash-firmware       Flash firmware image from the archive with sysupgrade
+
+Examples:
+  owrt-full-backup create -o /mnt/usb
+  owrt-full-backup create -o /mnt/usb --firmware-image /tmp/openwrt.bin
+  owrt-full-backup restore /mnt/usb/router-backup.tar.gz --yes
+EOF
+}
+
+need_cmd() {
+	command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
+}
+
+make_workdir() {
+	local base
+	base="${TMPDIR:-/tmp}"
+	WORKDIR="$(mktemp -d "$base/owrt-full-backup.XXXXXX" 2>/dev/null || true)"
+	if [ -z "$WORKDIR" ] || [ ! -d "$WORKDIR" ]; then
+		WORKDIR="$base/owrt-full-backup.$$"
+		mkdir -p "$WORKDIR" || die "cannot create temporary directory: $WORKDIR"
+	fi
+}
+
+uci_get() {
+	local key default value
+	key="$1"
+	default="$2"
+	if command -v uci >/dev/null 2>&1; then
+		value="$(uci -q get "fullbackup.main.$key" 2>/dev/null || true)"
+		if [ -n "$value" ]; then
+			printf '%s' "$value"
+			return
+		fi
+	fi
+	printf '%s' "$default"
+}
+
+copy_if_exists() {
+	local src dst
+	src="$1"
+	dst="$2"
+	if [ -e "$src" ]; then
+		cp -p "$src" "$dst" 2>/dev/null || cp "$src" "$dst" 2>/dev/null || true
+	fi
+}
+
+sanitize() {
+	printf '%s' "$1" | tr -cs 'A-Za-z0-9._-' '_'
+}
+
+hostname_safe() {
+	local name
+	name="$(hostname 2>/dev/null || printf 'openwrt')"
+	sanitize "$name"
+}
+
+board_name() {
+	if [ -r /tmp/sysinfo/board_name ]; then
+		cat /tmp/sysinfo/board_name
+		return
+	fi
+
+	if [ -r /etc/openwrt_release ]; then
+		(
+			. /etc/openwrt_release 2>/dev/null
+			printf '%s' "${DISTRIB_TARGET:-openwrt}"
+		)
+		return
+	fi
+
+	printf 'openwrt'
+}
+
+release_text() {
+	if [ -r /etc/openwrt_release ]; then
+		(
+			. /etc/openwrt_release 2>/dev/null
+			printf '%s %s' "${DISTRIB_ID:-OpenWrt}" "${DISTRIB_RELEASE:-unknown}"
+		)
+		return
+	fi
+
+	printf 'OpenWrt unknown'
+}
+
+write_command_output() {
+	local out
+	out="$1"
+	shift
+	"$@" >"$out" 2>"$out.err" || true
+	if [ ! -s "$out.err" ]; then
+		rm -f "$out.err"
+	fi
+}
+
+validate_tar_paths() {
+	local archive label
+	archive="$1"
+	label="$2"
+
+	if tar -tzf "$archive" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+		die "$label contains unsafe paths"
+	fi
+}
+
+create_metadata() {
+	local meta packages firmware
+	meta="$WORKDIR/meta"
+	packages="$WORKDIR/packages"
+	firmware="$WORKDIR/firmware"
+	mkdir -p "$meta" "$packages" "$firmware"
+
+	cat >"$WORKDIR/MANIFEST" <<EOF
+format=$FORMAT
+tool_version=$VERSION
+created_at_utc=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date)
+hostname=$(hostname 2>/dev/null || printf 'openwrt')
+board=$(board_name)
+release=$(release_text)
+kernel=$(uname -a 2>/dev/null || true)
+EOF
+
+	copy_if_exists /etc/openwrt_release "$meta/openwrt_release"
+	copy_if_exists /etc/openwrt_version "$meta/openwrt_version"
+	copy_if_exists /etc/board.json "$meta/board.json"
+	copy_if_exists /etc/sysupgrade.conf "$meta/sysupgrade.conf"
+	copy_if_exists /proc/mtd "$meta/proc-mtd.txt"
+	copy_if_exists /proc/partitions "$meta/proc-partitions.txt"
+
+	write_command_output "$meta/uname.txt" uname -a
+	write_command_output "$meta/mounts.txt" mount
+	write_command_output "$meta/df-h.txt" df -h
+
+	if command -v ubus >/dev/null 2>&1; then
+		write_command_output "$meta/system-board.json" ubus call system board
+	fi
+
+	if command -v uci >/dev/null 2>&1; then
+		write_command_output "$meta/uci-show.txt" uci show
+	fi
+
+	if command -v opkg >/dev/null 2>&1; then
+		write_command_output "$packages/installed.txt" opkg list-installed
+		write_command_output "$packages/print-architecture.txt" opkg print-architecture
+		write_command_output "$packages/changed-conffiles.txt" opkg list-changed-conffiles
+		copy_if_exists /usr/lib/opkg/status "$packages/opkg-status"
+	else
+		printf 'opkg was not available on this system.\n' >"$packages/installed.txt"
+	fi
+
+	cat >"$firmware/README.txt" <<'EOF'
+OpenWrt usually does not keep the original sysupgrade image on the router.
+Use --firmware-image /path/to/openwrt-sysupgrade.bin when creating a backup
+if you want the restore archive to include a flashable firmware image.
+
+Raw MTD dumps can be added with --include-raw-mtd, but they are hardware and
+partition-layout specific. Flashing raw MTD dumps on a different device or a
+different layout can permanently break the router.
+EOF
+}
+
+create_sysupgrade_backup() {
+	if command -v sysupgrade >/dev/null 2>&1; then
+		if sysupgrade -b "$WORKDIR/config-backup.tar.gz" >/dev/null 2>"$WORKDIR/meta/sysupgrade-backup.err"; then
+			rm -f "$WORKDIR/meta/sysupgrade-backup.err"
+		else
+			warn "sysupgrade config backup failed; falling back to /etc tar snapshot"
+			tar -czf "$WORKDIR/config-backup.tar.gz" -C / etc 2>"$WORKDIR/meta/etc-backup.err" || die "cannot create config backup"
+		fi
+		sysupgrade -l >"$WORKDIR/meta/sysupgrade-file-list.txt" 2>/dev/null || true
+	else
+		warn "sysupgrade command not found; using /etc tar snapshot"
+		tar -czf "$WORKDIR/config-backup.tar.gz" -C / etc 2>"$WORKDIR/meta/etc-backup.err" || die "cannot create config backup"
+	fi
+}
+
+create_overlay_snapshot() {
+	if [ ! -d /overlay/upper ]; then
+		printf 'No /overlay/upper directory was found on this system.\n' >"$WORKDIR/overlay-upper.README.txt"
+		return
+	fi
+
+	if tar -czf "$WORKDIR/overlay-upper.tar.gz" -C /overlay/upper . 2>"$WORKDIR/meta/overlay-upper.err"; then
+		rm -f "$WORKDIR/meta/overlay-upper.err"
+	else
+		warn "overlay snapshot failed; backup will continue without it"
+		rm -f "$WORKDIR/overlay-upper.tar.gz"
+	fi
+}
+
+create_rom_snapshot() {
+	if [ ! -d /rom ]; then
+		printf 'No /rom directory was found on this system.\n' >"$WORKDIR/rom-rootfs.README.txt"
+		return
+	fi
+
+	if tar -czf "$WORKDIR/rom-rootfs.tar.gz" -C /rom . 2>"$WORKDIR/meta/rom-rootfs.err"; then
+		rm -f "$WORKDIR/meta/rom-rootfs.err"
+	else
+		warn "ROM rootfs snapshot failed; backup will continue without it"
+		rm -f "$WORKDIR/rom-rootfs.tar.gz"
+	fi
+}
+
+copy_firmware_image() {
+	local image base
+	image="$1"
+	[ -n "$image" ] || return
+	[ -r "$image" ] || die "firmware image is not readable: $image"
+
+	base="$(basename "$image")"
+	mkdir -p "$WORKDIR/firmware"
+	cp "$image" "$WORKDIR/firmware/$base" || die "cannot copy firmware image"
+	if command -v sha256sum >/dev/null 2>&1; then
+		(
+			cd "$WORKDIR/firmware" && sha256sum "$base" >"$base.sha256"
+		) || true
+	fi
+	printf '%s\n' "$base" >"$WORKDIR/firmware/IMAGE"
+}
+
+dump_raw_mtd() {
+	local raw line dev name safe
+	if [ ! -r /proc/mtd ]; then
+		warn "/proc/mtd is not available; raw MTD dump skipped"
+		return
+	fi
+
+	raw="$WORKDIR/raw-mtd"
+	mkdir -p "$raw"
+	cp /proc/mtd "$raw/proc-mtd.txt" 2>/dev/null || true
+
+	while IFS= read -r line; do
+		case "$line" in
+			mtd*:*)
+				dev="${line%%:*}"
+				name="$(printf '%s\n' "$line" | sed 's/.*"\(.*\)".*/\1/')"
+				safe="$(sanitize "$name")"
+				if [ -e "/dev/$dev" ]; then
+					log "Dumping /dev/$dev ($name)"
+					dd if="/dev/$dev" of="$raw/$dev-$safe.bin" bs=64k 2>"$raw/$dev-$safe.dd.log" || warn "failed to dump /dev/$dev"
+				fi
+				;;
+		esac
+	done </proc/mtd
+}
+
+prune_old_backups() {
+	local output_dir keep_days
+	output_dir="$1"
+	keep_days="$2"
+
+	case "$keep_days" in
+		''|0) return ;;
+	esac
+
+	case "$keep_days" in
+		*[!0-9]*)
+			warn "keep_days must be a number; cleanup skipped"
+			return
+			;;
+	esac
+
+	find "$output_dir" -type f -name '*-owrt-full-backup.tar.gz' -mtime "+$keep_days" -exec rm -f {} \; 2>/dev/null || true
+	find "$output_dir" -type f -name '*-owrt-full-backup.tar.gz.sha256' -mtime "+$keep_days" -exec rm -f {} \; 2>/dev/null || true
+}
+
+cmd_create() {
+	local output_dir name include_overlay include_rom include_raw_mtd firmware_image timestamp host board archive keep_days
+	output_dir="$(uci_get output_dir "$DEFAULT_OUTPUT_DIR")"
+	include_overlay="$(uci_get include_overlay 1)"
+	include_rom="$(uci_get include_rom 0)"
+	include_raw_mtd="$(uci_get include_raw_mtd 0)"
+	keep_days="$(uci_get keep_days 0)"
+	name=""
+	firmware_image=""
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			-o|--output-dir)
+				[ $# -ge 2 ] || die "$1 requires a directory"
+				output_dir="$2"
+				shift 2
+				;;
+			-n|--name)
+				[ $# -ge 2 ] || die "$1 requires a name"
+				name="$2"
+				shift 2
+				;;
+			--no-overlay)
+				include_overlay=0
+				shift
+				;;
+			--include-rom)
+				include_rom=1
+				shift
+				;;
+			--firmware-image)
+				[ $# -ge 2 ] || die "$1 requires a file"
+				firmware_image="$2"
+				shift 2
+				;;
+			--include-raw-mtd)
+				include_raw_mtd=1
+				shift
+				;;
+			-h|--help)
+				usage
+				exit 0
+				;;
+			*)
+				die "unknown create option: $1"
+				;;
+		esac
+	done
+
+	need_cmd tar
+	need_cmd gzip
+	mkdir -p "$output_dir" || die "cannot create output directory: $output_dir"
+	make_workdir
+
+	timestamp="$(date '+%Y%m%d-%H%M%S' 2>/dev/null || date '+%s')"
+	host="$(hostname_safe)"
+	board="$(sanitize "$(board_name)")"
+	if [ -z "$name" ]; then
+		name="$host-$board-$timestamp-owrt-full-backup"
+	fi
+	archive="$output_dir/$name.tar.gz"
+
+	log "Creating backup workspace"
+	create_metadata
+	create_sysupgrade_backup
+
+	if [ "$include_overlay" = "1" ]; then
+		log "Adding overlay snapshot"
+		create_overlay_snapshot
+	else
+		printf 'Overlay snapshot disabled by option.\n' >"$WORKDIR/overlay-upper.README.txt"
+	fi
+
+	if [ "$include_rom" = "1" ]; then
+		log "Adding ROM rootfs snapshot"
+		create_rom_snapshot
+	else
+		printf 'ROM rootfs snapshot disabled by option.\n' >"$WORKDIR/rom-rootfs.README.txt"
+	fi
+
+	copy_firmware_image "$firmware_image"
+
+	if [ "$include_raw_mtd" = "1" ]; then
+		warn "raw MTD dumps are device-specific and can be very large"
+		dump_raw_mtd
+	fi
+
+	if tar -czf "$archive" -C "$WORKDIR" .; then
+		:
+	else
+		die "cannot create archive: $archive"
+	fi
+
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256sum "$archive" >"$archive.sha256" 2>/dev/null || true
+	fi
+
+	prune_old_backups "$output_dir" "$keep_days"
+	log "Backup created: $archive"
+	if [ -f "$archive.sha256" ]; then
+		log "Checksum created: $archive.sha256"
+	fi
+}
+
+extract_archive() {
+	local archive
+	archive="$1"
+	[ -r "$archive" ] || die "archive is not readable: $archive"
+	need_cmd tar
+	need_cmd gzip
+	validate_tar_paths "$archive" "archive"
+	make_workdir
+	tar -xzf "$archive" -C "$WORKDIR" || die "cannot extract archive"
+	[ -r "$WORKDIR/MANIFEST" ] || die "archive does not contain MANIFEST"
+	grep -q "^format=$FORMAT" "$WORKDIR/MANIFEST" || die "unsupported backup format"
+}
+
+show_manifest_summary() {
+	local count
+	if [ -r "$WORKDIR/MANIFEST" ]; then
+		sed -n '1,40p' "$WORKDIR/MANIFEST"
+	fi
+
+	if [ -r "$WORKDIR/packages/installed.txt" ]; then
+		count="$(grep -c ' - ' "$WORKDIR/packages/installed.txt" 2>/dev/null)"
+		[ -n "$count" ] || count=0
+		printf 'installed_packages_count=%s\n' "$count"
+	fi
+
+	if [ -r "$WORKDIR/firmware/IMAGE" ]; then
+		printf 'firmware_image=%s\n' "$(cat "$WORKDIR/firmware/IMAGE")"
+	else
+		printf 'firmware_image=not_included\n'
+	fi
+
+	if [ -r "$WORKDIR/overlay-upper.tar.gz" ]; then
+		printf 'overlay_snapshot=included\n'
+	else
+		printf 'overlay_snapshot=not_included\n'
+	fi
+
+	if [ -r "$WORKDIR/rom-rootfs.tar.gz" ]; then
+		printf 'rom_rootfs_snapshot=included\n'
+	else
+		printf 'rom_rootfs_snapshot=not_included\n'
+	fi
+
+	if [ -d "$WORKDIR/raw-mtd" ]; then
+		printf 'raw_mtd=included\n'
+	else
+		printf 'raw_mtd=not_included\n'
+	fi
+}
+
+confirm_restore() {
+	local yes answer
+	yes="$1"
+	if [ "$yes" = "1" ]; then
+		return
+	fi
+
+	printf 'This will change files on this OpenWrt device. Type "yes" to continue: ' >&2
+	read -r answer
+	[ "$answer" = "yes" ] || die "restore cancelled"
+}
+
+restore_configs() {
+	if [ ! -r "$WORKDIR/config-backup.tar.gz" ]; then
+		warn "config-backup.tar.gz not found; config restore skipped"
+		return
+	fi
+
+	log "Restoring config backup"
+	validate_tar_paths "$WORKDIR/config-backup.tar.gz" "config backup"
+	tar -xzpf "$WORKDIR/config-backup.tar.gz" -C / || die "config restore failed"
+}
+
+restore_packages() {
+	local installed line pkg failed
+	installed="$WORKDIR/packages/installed.txt"
+	[ -r "$installed" ] || {
+		warn "package list not found; package restore skipped"
+		return
+	}
+
+	if ! command -v opkg >/dev/null 2>&1; then
+		warn "opkg not found; package restore skipped"
+		return
+	fi
+
+	log "Updating package lists"
+	opkg update || warn "opkg update failed; package install will still be attempted"
+
+	failed=0
+	while IFS= read -r line; do
+		case "$line" in
+			*' - '*)
+				pkg="${line%% - *}"
+				;;
+			*)
+				continue
+				;;
+		esac
+
+		if opkg status "$pkg" 2>/dev/null | grep -q '^Status:.* installed'; then
+			continue
+		fi
+
+		log "Installing package: $pkg"
+		if ! opkg install "$pkg"; then
+			warn "failed to install package: $pkg"
+			failed=1
+		fi
+	done <"$installed"
+
+	if [ "$failed" = "1" ]; then
+		warn "some packages could not be installed; check feed compatibility for this OpenWrt version"
+	fi
+}
+
+restore_overlay() {
+	if [ ! -r "$WORKDIR/overlay-upper.tar.gz" ]; then
+		warn "overlay snapshot not found; overlay restore skipped"
+		return
+	fi
+
+	warn "overlay restore is best used on the same device and same OpenWrt release"
+	log "Restoring overlay snapshot to /"
+	validate_tar_paths "$WORKDIR/overlay-upper.tar.gz" "overlay snapshot"
+	tar -xzpf "$WORKDIR/overlay-upper.tar.gz" -C / || die "overlay restore failed"
+}
+
+flash_firmware() {
+	local image_name image_path
+	[ -r "$WORKDIR/firmware/IMAGE" ] || die "archive does not contain a firmware image"
+	image_name="$(cat "$WORKDIR/firmware/IMAGE")"
+	case "$image_name" in
+		*/*|../*|*/../*|..)
+			die "firmware image name is unsafe"
+			;;
+	esac
+	image_path="$WORKDIR/firmware/$image_name"
+	[ -r "$image_path" ] || die "firmware image listed in archive is missing: $image_name"
+	command -v sysupgrade >/dev/null 2>&1 || die "sysupgrade command not found"
+
+	warn "sysupgrade will flash firmware and reboot the device"
+	sysupgrade "$image_path"
+}
+
+cmd_restore() {
+	local archive yes do_configs do_packages do_overlay do_flash
+	[ $# -ge 1 ] || die "restore requires an archive path"
+	archive="$1"
+	shift
+
+	yes=0
+	do_configs=1
+	do_packages=1
+	do_overlay=0
+	do_flash=0
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--yes)
+				yes=1
+				shift
+				;;
+			--no-configs)
+				do_configs=0
+				shift
+				;;
+			--no-packages)
+				do_packages=0
+				shift
+				;;
+			--overlay)
+				do_overlay=1
+				shift
+				;;
+			--flash-firmware)
+				do_flash=1
+				shift
+				;;
+			-h|--help)
+				usage
+				exit 0
+				;;
+			*)
+				die "unknown restore option: $1"
+				;;
+		esac
+	done
+
+	extract_archive "$archive"
+	show_manifest_summary >&2
+	confirm_restore "$yes"
+
+	if [ "$do_flash" = "1" ]; then
+		flash_firmware
+		return
+	fi
+
+	if [ "$do_configs" = "1" ]; then
+		restore_configs
+	fi
+
+	if [ "$do_packages" = "1" ]; then
+		restore_packages
+	fi
+
+	if [ "$do_overlay" = "1" ]; then
+		restore_overlay
+	fi
+
+	log "Restore finished. Reboot is recommended."
+}
+
+cmd_inspect() {
+	[ $# -ge 1 ] || die "inspect requires an archive path"
+	extract_archive "$1"
+	show_manifest_summary
+}
+
+main() {
+	local cmd
+	cmd="${1:-help}"
+	case "$cmd" in
+		create)
+			shift
+			cmd_create "$@"
+			;;
+		restore)
+			shift
+			cmd_restore "$@"
+			;;
+		inspect)
+			shift
+			cmd_inspect "$@"
+			;;
+		help|-h|--help)
+			usage
+			;;
+		*)
+			die "unknown command: $cmd"
+			;;
+	esac
+}
+
+main "$@"

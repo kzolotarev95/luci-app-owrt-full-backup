@@ -1,0 +1,8 @@
+*.ipk
+*.tar.gz
+*.tar.gz.sha256
+build_dir/
+bin/
+dl/
+staging_dir/
+tmp/

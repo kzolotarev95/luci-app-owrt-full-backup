@@ -1,0 +1,6 @@
+config backup 'main'
+	option output_dir '/tmp'
+	option include_overlay '1'
+	option include_rom '0'
+	option include_raw_mtd '0'
+	option keep_days '0'
