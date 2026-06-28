@@ -27,7 +27,7 @@ if [ -x "$(target_path etc/init.d/uhttpd)" ]; then
 	"$(target_path etc/init.d/uhttpd)" reload >/dev/null 2>&1 || "$(target_path etc/init.d/uhttpd)" restart >/dev/null 2>&1 || true
 fi
 
-printf '%s\n' "Removed OpenWrt Full Backup web panel."
+printf '%s\n' "Веб-панель OpenWrt Full Backup удалена."
 if [ "$PURGE" != "1" ]; then
-	printf '%s\n' "Config and web key were kept. Run with PURGE=1 to remove them."
+	printf '%s\n' "Конфиг и веб-ключ оставлены. Для полного удаления запусти с PURGE=1."
 fi

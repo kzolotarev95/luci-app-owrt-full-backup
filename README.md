@@ -1,97 +1,111 @@
-# OpenWrt Full Backup Web
+# luci-app-owrt-full-backup
 
-Direct web panel for OpenWrt backup and restore. No OpenWrt buildroot package or `.ipk` build is required.
+Веб-панель для полного бэкапа и восстановления OpenWrt. Сборка `.ipk` не нужна: установка идет напрямую из GitHub на роутер.
 
-It installs:
+Поддержка: OpenWrt 22.x, 23.x, 24.x и 25.x.
 
-- `/usr/sbin/owrt-full-backup` command line helper;
-- `/www/cgi-bin/owrt-full-backup` web panel;
-- `/etc/config/fullbackup` defaults;
-- `/etc/owrt-full-backup/web.key` secret web key.
+## Что устанавливается
 
-Target: OpenWrt 22.x, 23.x, 24.x and 25.x.
+- `/usr/sbin/owrt-full-backup` - консольная команда;
+- `/www/cgi-bin/owrt-full-backup` - веб-панель;
+- `/etc/config/fullbackup` - настройки по умолчанию;
+- `/etc/owrt-full-backup/web.key` - секретный ключ для входа в панель.
 
-## Install From Git
+## Установка
+
+Через `git`:
 
 ```sh
-git clone https://github.com/kzolotarev95/openwrt-full-backup.git
-cd openwrt-full-backup
+git clone https://github.com/kzolotarev95/luci-app-owrt-full-backup.git
+cd luci-app-owrt-full-backup
 sh install.sh
 ```
 
-One-line install:
+Установка одной командой:
 
 ```sh
-wget -O - https://raw.githubusercontent.com/kzolotarev95/openwrt-full-backup/main/install.sh | sh
+wget -O - https://raw.githubusercontent.com/kzolotarev95/luci-app-owrt-full-backup/main/install.sh | sh
 ```
 
-The installer prints a private panel link:
+После установки скрипт покажет приватную ссылку:
 
 ```text
 http://192.168.1.1/cgi-bin/owrt-full-backup?key=SECRET
 ```
 
-Keep this link private.
+Эту ссылку никому не отдавай: ключ в URL дает доступ к созданию и восстановлению бэкапов.
 
-## Web Panel
+## Возможности веб-панели
 
-The panel can:
+- создать полный архив бэкапа;
+- скачать готовый архив;
+- посмотреть содержимое/метаданные архива;
+- восстановить настройки;
+- отдельно включить восстановление списка пакетов;
+- отдельно включить восстановление overlay;
+- отдельно прошить firmware image из архива;
+- сохранить настройки по умолчанию.
 
-- create a full backup archive;
-- download created archives;
-- inspect an existing archive;
-- restore configs;
-- optionally reinstall saved package list;
-- optionally restore overlay;
-- optionally flash firmware image from the archive;
-- save default backup settings.
+По умолчанию восстановление из веб-панели возвращает только настройки. Пакеты, overlay и прошивка включаются отдельными галочками.
 
-Restore from the web panel does not reinstall packages unless you tick that checkbox.
+## Удаление
 
-## Remove
-
-From a cloned repo:
+Если репозиторий уже скачан:
 
 ```sh
 sh uninstall.sh
 ```
 
-One-line remove:
+Удаление одной командой:
 
 ```sh
-wget -O - https://raw.githubusercontent.com/kzolotarev95/openwrt-full-backup/main/uninstall.sh | sh
+wget -O - https://raw.githubusercontent.com/kzolotarev95/luci-app-owrt-full-backup/main/uninstall.sh | sh
 ```
 
-Remove config and web key too:
+Удалить еще и конфиг с веб-ключом:
 
 ```sh
-wget -O - https://raw.githubusercontent.com/kzolotarev95/openwrt-full-backup/main/uninstall.sh | PURGE=1 sh
+wget -O - https://raw.githubusercontent.com/kzolotarev95/luci-app-owrt-full-backup/main/uninstall.sh | PURGE=1 sh
 ```
 
-Backup archives are not deleted by uninstall.
+Архивы бэкапов при удалении не стираются.
 
-## CLI Examples
+## Примеры CLI
 
-Create backup to USB:
+Создать бэкап на USB:
 
 ```sh
 owrt-full-backup create -o /mnt/usb
 ```
 
-Include firmware image if it is already on the router:
+Добавить в архив файл прошивки, если он уже лежит на роутере:
 
 ```sh
 owrt-full-backup create -o /mnt/usb --firmware-image /tmp/openwrt-sysupgrade.bin
 ```
 
-Inspect backup:
+Посмотреть архив:
 
 ```sh
 owrt-full-backup inspect /mnt/usb/router-owrt-full-backup.tar.gz
 ```
 
-Restore configs only:
+Восстановить только настройки:
 
 ```sh
 owrt-full-backup restore /mnt/usb/router-owrt-full-backup.tar.gz --yes --no-packages
+```
+
+## Почему раньше был 404
+
+Старая команда ссылалась на другой репозиторий:
+
+```sh
+https://raw.githubusercontent.com/kzolotarev95/openwrt-full-backup/main/install.sh
+```
+
+Правильный адрес для этого проекта:
+
+```sh
+https://raw.githubusercontent.com/kzolotarev95/luci-app-owrt-full-backup/main/install.sh
 ```

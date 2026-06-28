@@ -2,9 +2,9 @@
 
 set -eu
 
-RAW_URL="${RAW_URL:-https://raw.githubusercontent.com/kzolotarev95/openwrt-full-backup/main}"
+RAW_URL="${RAW_URL:-https://raw.githubusercontent.com/kzolotarev95/luci-app-owrt-full-backup/main}"
 ROOT="${ROOT:-/}"
-SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd)"
+SCRIPT_DIR="$(CDPATH= cd "$(dirname "$0")" 2>/dev/null && pwd)"
 
 info() {
 	printf '%s\n' "$*"
@@ -28,7 +28,7 @@ fetch() {
 	elif command -v curl >/dev/null 2>&1; then
 		curl -fsSL "$src" -o "$dst"
 	else
-		die "wget or curl is required for remote install"
+		die "для удаленной установки нужен wget или curl"
 	fi
 }
 
@@ -54,7 +54,7 @@ install_config() {
 	dst="$(target_path "$rel")"
 	mkdir -p "$(dirname "$dst")"
 	if [ -f "$dst" ]; then
-		info "Keeping existing $dst"
+		info "Оставляю существующий файл: $dst"
 		return
 	fi
 	if [ -f "$src" ]; then
@@ -111,6 +111,6 @@ fi
 key="$(make_key)"
 ip="$(router_ip)"
 
-info "Installed OpenWrt Full Backup web panel."
-info "Open: http://$ip/cgi-bin/owrt-full-backup?key=$key"
-info "CLI:  owrt-full-backup create -o /mnt/usb"
+info "Веб-панель OpenWrt Full Backup установлена."
+info "Открыть: http://$ip/cgi-bin/owrt-full-backup?key=$key"
+info "CLI:    owrt-full-backup create -o /mnt/usb"

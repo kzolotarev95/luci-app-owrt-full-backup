@@ -6,8 +6,8 @@ PARAMS_FILE="${TMPDIR:-/tmp}/owrt-full-backup-cgi.$$"
 RESULT_FILE=""
 RESULT_TITLE=""
 RESULT_CODE=""
-PROJECT_URL="${PROJECT_URL:-https://github.com/kzolotarev95/openwrt-full-backup}"
-RAW_URL="${RAW_URL:-https://raw.githubusercontent.com/kzolotarev95/openwrt-full-backup/main}"
+PROJECT_URL="${PROJECT_URL:-https://github.com/kzolotarev95/luci-app-owrt-full-backup}"
+RAW_URL="${RAW_URL:-https://raw.githubusercontent.com/kzolotarev95/luci-app-owrt-full-backup/main}"
 
 cleanup() {
 	rm -f "$PARAMS_FILE"
@@ -103,7 +103,7 @@ http_unauthorized() {
 	http_html
 	cat <<'EOF'
 <!doctype html><html><head><meta charset="utf-8"><title>OpenWrt Full Backup</title></head>
-<body><h1>Access denied</h1><p>Open the panel with the secret key printed by install.sh.</p></body></html>
+<body><h1>Доступ запрещен</h1><p>Открой панель по секретной ссылке, которую показал install.sh.</p></body></html>
 EOF
 }
 
@@ -120,16 +120,16 @@ download_file() {
 	file="$(param file)"
 	valid_abs_path "$file" || {
 		http_html
-		printf '<p>Bad file path.</p>'
+		printf '<p>Неверный путь к файлу.</p>'
 		exit 0
 	}
 	case "$file" in
 		*.tar.gz|*.tar.gz.sha256) ;;
-		*) http_html; printf '<p>Only backup archives and checksums can be downloaded.</p>'; exit 0 ;;
+		*) http_html; printf '<p>Скачать можно только архивы бэкапа и checksum-файлы.</p>'; exit 0 ;;
 	esac
 	[ -f "$file" ] || {
 		http_html
-		printf '<p>File not found.</p>'
+		printf '<p>Файл не найден.</p>'
 		exit 0
 	}
 	base="$(basename "$file")"
@@ -148,7 +148,7 @@ run_backend() {
 	RESULT_FILE="${TMPDIR:-/tmp}/owrt-full-backup-result.$$"
 	if [ ! -x "$BACKEND" ]; then
 		RESULT_CODE=127
-		printf 'Backend is not installed: %s\n' "$BACKEND" >"$RESULT_FILE"
+		printf 'Backend не установлен: %s\n' "$BACKEND" >"$RESULT_FILE"
 		return
 	fi
 	"$BACKEND" "$@" >"$RESULT_FILE" 2>&1
@@ -162,10 +162,10 @@ handle_create() {
 	firmware="$(param firmware_image)"
 	[ -n "$output_dir" ] || output_dir="$(config_get output_dir /tmp)"
 	valid_abs_path "$output_dir" || {
-		RESULT_TITLE="Create backup"
+		RESULT_TITLE="Создание бэкапа"
 		RESULT_CODE=2
 		RESULT_FILE="${TMPDIR:-/tmp}/owrt-full-backup-result.$$"
-		printf 'Bad output directory. Use an absolute path, for example /mnt/usb.\n' >"$RESULT_FILE"
+		printf 'Неверная папка для архива. Используй абсолютный путь, например /mnt/usb.\n' >"$RESULT_FILE"
 		return
 	}
 
@@ -175,20 +175,20 @@ handle_create() {
 	has_param include_rom && set -- "$@" --include-rom
 	has_param include_raw_mtd && set -- "$@" --include-raw-mtd
 	[ -n "$firmware" ] && set -- "$@" --firmware-image "$firmware"
-	run_backend "Create backup" "$@"
+	run_backend "Создание бэкапа" "$@"
 }
 
 handle_inspect() {
 	local archive
 	archive="$(param archive)"
 	valid_abs_path "$archive" || {
-		RESULT_TITLE="Inspect backup"
+		RESULT_TITLE="Просмотр архива"
 		RESULT_CODE=2
 		RESULT_FILE="${TMPDIR:-/tmp}/owrt-full-backup-result.$$"
-		printf 'Bad archive path.\n' >"$RESULT_FILE"
+		printf 'Неверный путь к архиву.\n' >"$RESULT_FILE"
 		return
 	}
-	run_backend "Inspect backup" inspect "$archive"
+	run_backend "Просмотр архива" inspect "$archive"
 }
 
 handle_restore() {
@@ -196,17 +196,17 @@ handle_restore() {
 	archive="$(param archive)"
 	confirm="$(param confirm)"
 	if [ "$confirm" != "RESTORE" ]; then
-		RESULT_TITLE="Restore backup"
+		RESULT_TITLE="Восстановление"
 		RESULT_CODE=2
 		RESULT_FILE="${TMPDIR:-/tmp}/owrt-full-backup-result.$$"
-		printf 'Type RESTORE to confirm restore.\n' >"$RESULT_FILE"
+		printf 'Для подтверждения введи RESTORE.\n' >"$RESULT_FILE"
 		return
 	fi
 	valid_abs_path "$archive" || {
-		RESULT_TITLE="Restore backup"
+		RESULT_TITLE="Восстановление"
 		RESULT_CODE=2
 		RESULT_FILE="${TMPDIR:-/tmp}/owrt-full-backup-result.$$"
-		printf 'Bad archive path.\n' >"$RESULT_FILE"
+		printf 'Неверный путь к архиву.\n' >"$RESULT_FILE"
 		return
 	}
 
@@ -215,19 +215,19 @@ handle_restore() {
 	has_param restore_packages || set -- "$@" --no-packages
 	has_param restore_overlay && set -- "$@" --overlay
 	has_param flash_firmware && set -- "$@" --flash-firmware
-	run_backend "Restore backup" "$@"
+	run_backend "Восстановление" "$@"
 }
 
 handle_save_defaults() {
 	local output_dir include_overlay include_rom include_raw_mtd keep_days
-	RESULT_TITLE="Save defaults"
+	RESULT_TITLE="Сохранение настроек"
 	RESULT_CODE=0
 	RESULT_FILE="${TMPDIR:-/tmp}/owrt-full-backup-result.$$"
 	output_dir="$(param default_output_dir)"
 	keep_days="$(param keep_days)"
 	valid_abs_path "$output_dir" || {
 		RESULT_CODE=2
-		printf 'Bad output directory.\n' >"$RESULT_FILE"
+		printf 'Неверная папка для архива.\n' >"$RESULT_FILE"
 		return
 	}
 	case "$keep_days" in ''|*[!0-9]*) keep_days=0 ;; esac
@@ -246,10 +246,10 @@ set fullbackup.main.keep_days='$keep_days'
 commit fullbackup
 EOF
 		RESULT_CODE="$?"
-		[ "$RESULT_CODE" = "0" ] && printf 'Defaults saved.\n' >>"$RESULT_FILE"
+		[ "$RESULT_CODE" = "0" ] && printf 'Настройки сохранены.\n' >>"$RESULT_FILE"
 	else
 		RESULT_CODE=127
-		printf 'uci command not found.\n' >"$RESULT_FILE"
+		printf 'Команда uci не найдена.\n' >"$RESULT_FILE"
 	fi
 }
 
@@ -294,7 +294,7 @@ backup_rows() {
 	dir="$(config_get output_dir /tmp)"
 	key="$(h "$(param key)")"
 	[ -d "$dir" ] || {
-		printf '<tr><td colspan="4">Output directory does not exist.</td></tr>'
+		printf '<tr><td colspan="4">Папка для архивов не существует.</td></tr>'
 		return
 	}
 	for file in "$dir"/*-owrt-full-backup.tar.gz; do
@@ -302,7 +302,7 @@ backup_rows() {
 		base="$(basename "$file")"
 		size="$(ls -lh "$file" 2>/dev/null | awk '{print $5}')"
 		mtime="$(ls -l "$file" 2>/dev/null | awk '{print $6" "$7" "$8}')"
-		printf '<tr><td><code>%s</code></td><td>%s</td><td>%s</td><td><a href="%s?key=%s&amp;action=download&amp;file=%s">download</a></td></tr>' \
+		printf '<tr><td><code>%s</code></td><td>%s</td><td>%s</td><td><a href="%s?key=%s&amp;action=download&amp;file=%s">скачать</a></td></tr>' \
 			"$(h "$base")" "$(h "$size")" "$(h "$mtime")" "$(self_url)" "$key" "$(h "$file")"
 	done
 }
@@ -319,7 +319,7 @@ page() {
 	http_html
 	cat <<EOF
 <!doctype html>
-<html lang="en">
+<html lang="ru">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -358,13 +358,13 @@ td, th { border-bottom: 1px solid var(--line); padding: 8px 6px; text-align: lef
 <body>
 <header>
 <h1>OpenWrt Full Backup</h1>
-<p>Direct web panel, no IPK build required. Keep this URL secret.</p>
+<p>Веб-панель для полного бэкапа OpenWrt без сборки IPK. Держи эту ссылку в секрете.</p>
 </header>
 <main>
 EOF
 
 	if [ -n "$RESULT_FILE" ]; then
-		printf '<section class="panel span12"><h2>%s</h2><p>Exit code: %s</p><pre>' "$(h "$RESULT_TITLE")" "$(h "$RESULT_CODE")"
+		printf '<section class="panel span12"><h2>%s</h2><p>Код выхода: %s</p><pre>' "$(h "$RESULT_TITLE")" "$(h "$RESULT_CODE")"
 		html_escape <"$RESULT_FILE"
 		printf '</pre></section>'
 	fi
@@ -372,91 +372,91 @@ EOF
 	cat <<EOF
 <section class="grid">
 <div class="panel span4">
-<h2>Device</h2>
+<h2>Устройство</h2>
 <div class="status">
-<span class="pill">Host: $(h "$(system_value host)")</span>
-<span class="pill">Release: $(h "$(system_value release)")</span>
-<span class="pill">Board: $(h "$(system_value board)")</span>
+<span class="pill">Имя: $(h "$(system_value host)")</span>
+<span class="pill">Версия: $(h "$(system_value release)")</span>
+<span class="pill">Плата: $(h "$(system_value board)")</span>
 </div>
 <pre>$(df -h 2>/dev/null | html_escape)</pre>
 </div>
 
 <form class="panel span8" method="post" action="$(self_url)">
-<h2>Create backup</h2>
+<h2>Создать бэкап</h2>
 <input type="hidden" name="key" value="$key">
 <input type="hidden" name="action" value="create">
-<label>Output directory</label>
+<label>Папка для архива</label>
 <input type="text" name="output_dir" value="$(h "$output_dir")">
-<label>Archive name</label>
-<input type="text" name="name" placeholder="auto name">
-<label>Firmware image path</label>
+<label>Имя архива</label>
+<input type="text" name="name" placeholder="автоматически">
+<label>Путь к файлу прошивки</label>
 <input type="text" name="firmware_image" placeholder="/tmp/openwrt-sysupgrade.bin">
 <div class="checks">
-<label><input type="checkbox" name="include_overlay" value="1"$(checkbox_attr "$include_overlay")> include /overlay/upper</label>
-<label><input type="checkbox" name="include_rom" value="1"$(checkbox_attr "$include_rom")> include /rom rootfs snapshot</label>
-<label><input type="checkbox" name="include_raw_mtd" value="1"$(checkbox_attr "$include_raw_mtd")> include raw MTD dumps</label>
+<label><input type="checkbox" name="include_overlay" value="1"$(checkbox_attr "$include_overlay")> добавить /overlay/upper</label>
+<label><input type="checkbox" name="include_rom" value="1"$(checkbox_attr "$include_rom")> добавить снимок /rom</label>
+<label><input type="checkbox" name="include_raw_mtd" value="1"$(checkbox_attr "$include_raw_mtd")> добавить raw MTD dump</label>
 </div>
-<button type="submit">Create backup</button>
+<button type="submit">Создать бэкап</button>
 </form>
 
 <div class="panel span12">
-<h2>Backups in $(h "$output_dir")</h2>
-<table><thead><tr><th>File</th><th>Size</th><th>Date</th><th>Action</th></tr></thead><tbody>
+<h2>Архивы в $(h "$output_dir")</h2>
+<table><thead><tr><th>Файл</th><th>Размер</th><th>Дата</th><th>Действие</th></tr></thead><tbody>
 $(backup_rows)
 </tbody></table>
 </div>
 
 <form class="panel span6" method="post" action="$(self_url)">
-<h2>Inspect archive</h2>
+<h2>Посмотреть архив</h2>
 <input type="hidden" name="key" value="$key">
 <input type="hidden" name="action" value="inspect">
-<label>Archive path</label>
+<label>Путь к архиву</label>
 <input type="text" name="archive" placeholder="/mnt/usb/router-owrt-full-backup.tar.gz">
-<button type="submit">Inspect</button>
+<button type="submit">Посмотреть</button>
 </form>
 
 <form class="panel span6" method="post" action="$(self_url)">
-<h2>Restore archive</h2>
+<h2>Восстановить архив</h2>
 <input type="hidden" name="key" value="$key">
 <input type="hidden" name="action" value="restore">
-<label>Archive path</label>
+<label>Путь к архиву</label>
 <input type="text" name="archive" placeholder="/mnt/usb/router-owrt-full-backup.tar.gz">
 <div class="checks">
-<label><input type="checkbox" name="restore_configs" value="1" checked> restore configs</label>
-<label><input type="checkbox" name="restore_packages" value="1"> reinstall package list</label>
-<label><input type="checkbox" name="restore_overlay" value="1"> restore overlay snapshot</label>
-<label><input type="checkbox" name="flash_firmware" value="1"> flash firmware image and reboot</label>
+<label><input type="checkbox" name="restore_configs" value="1" checked> восстановить настройки</label>
+<label><input type="checkbox" name="restore_packages" value="1"> переустановить список пакетов</label>
+<label><input type="checkbox" name="restore_overlay" value="1"> восстановить overlay snapshot</label>
+<label><input type="checkbox" name="flash_firmware" value="1"> прошить firmware image и перезагрузить</label>
 </div>
-<label>Type RESTORE</label>
+<label>Введи RESTORE для подтверждения</label>
 <input type="text" name="confirm" autocomplete="off">
-<button class="danger" type="submit">Run restore</button>
+<button class="danger" type="submit">Запустить восстановление</button>
 </form>
 
 <form class="panel span6" method="post" action="$(self_url)">
-<h2>Defaults</h2>
+<h2>Настройки по умолчанию</h2>
 <input type="hidden" name="key" value="$key">
 <input type="hidden" name="action" value="save_defaults">
-<label>Default output directory</label>
+<label>Папка для архивов по умолчанию</label>
 <input type="text" name="default_output_dir" value="$(h "$output_dir")">
-<label>Keep days, 0 disables cleanup</label>
+<label>Хранить дней, 0 отключает автоочистку</label>
 <input type="number" min="0" name="keep_days" value="$(h "$keep_days")">
 <div class="checks">
-<label><input type="checkbox" name="default_include_overlay" value="1"$(checkbox_attr "$include_overlay")> include overlay by default</label>
-<label><input type="checkbox" name="default_include_rom" value="1"$(checkbox_attr "$include_rom")> include ROM by default</label>
-<label><input type="checkbox" name="default_include_raw_mtd" value="1"$(checkbox_attr "$include_raw_mtd")> include raw MTD by default</label>
+<label><input type="checkbox" name="default_include_overlay" value="1"$(checkbox_attr "$include_overlay")> добавлять overlay по умолчанию</label>
+<label><input type="checkbox" name="default_include_rom" value="1"$(checkbox_attr "$include_rom")> добавлять ROM по умолчанию</label>
+<label><input type="checkbox" name="default_include_raw_mtd" value="1"$(checkbox_attr "$include_raw_mtd")> добавлять raw MTD по умолчанию</label>
 </div>
-<button type="submit">Save defaults</button>
+<button type="submit">Сохранить настройки</button>
 </form>
 
 <div class="panel span6">
-<h2>Git install / remove</h2>
-<p>Clone install:</p>
+<h2>Установка / удаление через Git</h2>
+<p>Установка через clone:</p>
 <pre>git clone $(h "$PROJECT_URL").git
-cd openwrt-full-backup
+cd luci-app-owrt-full-backup
 sh install.sh</pre>
-<p>One-line install:</p>
+<p>Установка одной командой:</p>
 <pre>wget -O - $(h "$RAW_URL")/install.sh | sh</pre>
-<p>Remove:</p>
+<p>Удаление:</p>
 <pre>wget -O - $(h "$RAW_URL")/uninstall.sh | sh</pre>
 </div>
 </section>

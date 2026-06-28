@@ -10,11 +10,11 @@ log() {
 }
 
 warn() {
-	printf 'WARNING: %s\n' "$*" >&2
+	printf 'ВНИМАНИЕ: %s\n' "$*" >&2
 }
 
 die() {
-	printf 'ERROR: %s\n' "$*" >&2
+	printf 'ОШИБКА: %s\n' "$*" >&2
 	exit 1
 }
 
@@ -28,28 +28,28 @@ trap cleanup EXIT INT TERM
 
 usage() {
 	cat <<'EOF'
-Usage:
+Использование:
   owrt-full-backup create [options]
   owrt-full-backup restore <archive.tar.gz> [options]
   owrt-full-backup inspect <archive.tar.gz>
   owrt-full-backup help
 
-Create options:
-  -o, --output-dir DIR       Directory for the final backup archive
-  -n, --name NAME            Archive base name without .tar.gz
-      --no-overlay           Do not include /overlay/upper snapshot
-      --include-rom          Include read-only /rom rootfs snapshot
-      --firmware-image FILE  Copy a sysupgrade image into the backup
-      --include-raw-mtd      Also dump /dev/mtd* partitions into the backup
+Опции создания:
+  -o, --output-dir DIR       Папка для итогового архива
+  -n, --name NAME            Имя архива без .tar.gz
+      --no-overlay           Не добавлять снимок /overlay/upper
+      --include-rom          Добавить read-only снимок /rom
+      --firmware-image FILE  Скопировать sysupgrade-образ в архив
+      --include-raw-mtd      Добавить dump разделов /dev/mtd*
 
-Restore options:
-      --yes                  Do not ask for confirmation
-      --no-configs           Do not restore sysupgrade config backup
-      --no-packages          Do not reinstall packages from the saved list
-      --overlay              Restore /overlay/upper snapshot to /
-      --flash-firmware       Flash firmware image from the archive with sysupgrade
+Опции восстановления:
+      --yes                  Не спрашивать подтверждение
+      --no-configs           Не восстанавливать sysupgrade config backup
+      --no-packages          Не переустанавливать пакеты из списка
+      --overlay              Восстановить снимок /overlay/upper в /
+      --flash-firmware       Прошить firmware image из архива через sysupgrade
 
-Examples:
+Примеры:
   owrt-full-backup create -o /mnt/usb
   owrt-full-backup create -o /mnt/usb --firmware-image /tmp/openwrt.bin
   owrt-full-backup restore /mnt/usb/router-backup.tar.gz --yes
@@ -57,7 +57,7 @@ EOF
 }
 
 need_cmd() {
-	command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
+	command -v "$1" >/dev/null 2>&1 || die "нужная команда не найдена: $1"
 }
 
 make_workdir() {
@@ -66,7 +66,7 @@ make_workdir() {
 	WORKDIR="$(mktemp -d "$base/owrt-full-backup.XXXXXX" 2>/dev/null || true)"
 	if [ -z "$WORKDIR" ] || [ ! -d "$WORKDIR" ]; then
 		WORKDIR="$base/owrt-full-backup.$$"
-		mkdir -p "$WORKDIR" || die "cannot create temporary directory: $WORKDIR"
+		mkdir -p "$WORKDIR" || die "не удалось создать временную папку: $WORKDIR"
 	fi
 }
 
@@ -148,7 +148,7 @@ validate_tar_paths() {
 	label="$2"
 
 	if tar -tzf "$archive" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
-		die "$label contains unsafe paths"
+		die "$label содержит небезопасные пути"
 	fi
 }
 
@@ -194,17 +194,17 @@ EOF
 		write_command_output "$packages/changed-conffiles.txt" opkg list-changed-conffiles
 		copy_if_exists /usr/lib/opkg/status "$packages/opkg-status"
 	else
-		printf 'opkg was not available on this system.\n' >"$packages/installed.txt"
+		printf 'opkg недоступен на этой системе.\n' >"$packages/installed.txt"
 	fi
 
 	cat >"$firmware/README.txt" <<'EOF'
-OpenWrt usually does not keep the original sysupgrade image on the router.
-Use --firmware-image /path/to/openwrt-sysupgrade.bin when creating a backup
-if you want the restore archive to include a flashable firmware image.
+OpenWrt обычно не хранит исходный sysupgrade-образ на роутере.
+Используй --firmware-image /path/to/openwrt-sysupgrade.bin при создании
+бэкапа, если хочешь добавить в архив прошиваемый firmware image.
 
-Raw MTD dumps can be added with --include-raw-mtd, but they are hardware and
-partition-layout specific. Flashing raw MTD dumps on a different device or a
-different layout can permanently break the router.
+Raw MTD dumps можно добавить через --include-raw-mtd, но они завязаны на
+конкретное железо и разметку flash. Прошивка таких dump на другом устройстве
+или другой разметке может окончательно сломать роутер.
 EOF
 }
 
@@ -213,40 +213,40 @@ create_sysupgrade_backup() {
 		if sysupgrade -b "$WORKDIR/config-backup.tar.gz" >/dev/null 2>"$WORKDIR/meta/sysupgrade-backup.err"; then
 			rm -f "$WORKDIR/meta/sysupgrade-backup.err"
 		else
-			warn "sysupgrade config backup failed; falling back to /etc tar snapshot"
-			tar -czf "$WORKDIR/config-backup.tar.gz" -C / etc 2>"$WORKDIR/meta/etc-backup.err" || die "cannot create config backup"
+			warn "sysupgrade config backup не сработал; делаю fallback-снимок /etc"
+			tar -czf "$WORKDIR/config-backup.tar.gz" -C / etc 2>"$WORKDIR/meta/etc-backup.err" || die "не удалось создать config backup"
 		fi
 		sysupgrade -l >"$WORKDIR/meta/sysupgrade-file-list.txt" 2>/dev/null || true
 	else
-		warn "sysupgrade command not found; using /etc tar snapshot"
-		tar -czf "$WORKDIR/config-backup.tar.gz" -C / etc 2>"$WORKDIR/meta/etc-backup.err" || die "cannot create config backup"
+		warn "команда sysupgrade не найдена; делаю tar-снимок /etc"
+		tar -czf "$WORKDIR/config-backup.tar.gz" -C / etc 2>"$WORKDIR/meta/etc-backup.err" || die "не удалось создать config backup"
 	fi
 }
 
 create_overlay_snapshot() {
 	if [ ! -d /overlay/upper ]; then
-		printf 'No /overlay/upper directory was found on this system.\n' >"$WORKDIR/overlay-upper.README.txt"
+		printf 'Папка /overlay/upper на этой системе не найдена.\n' >"$WORKDIR/overlay-upper.README.txt"
 		return
 	fi
 
 	if tar -czf "$WORKDIR/overlay-upper.tar.gz" -C /overlay/upper . 2>"$WORKDIR/meta/overlay-upper.err"; then
 		rm -f "$WORKDIR/meta/overlay-upper.err"
 	else
-		warn "overlay snapshot failed; backup will continue without it"
+		warn "снимок overlay не получился; бэкап продолжится без него"
 		rm -f "$WORKDIR/overlay-upper.tar.gz"
 	fi
 }
 
 create_rom_snapshot() {
 	if [ ! -d /rom ]; then
-		printf 'No /rom directory was found on this system.\n' >"$WORKDIR/rom-rootfs.README.txt"
+		printf 'Папка /rom на этой системе не найдена.\n' >"$WORKDIR/rom-rootfs.README.txt"
 		return
 	fi
 
 	if tar -czf "$WORKDIR/rom-rootfs.tar.gz" -C /rom . 2>"$WORKDIR/meta/rom-rootfs.err"; then
 		rm -f "$WORKDIR/meta/rom-rootfs.err"
 	else
-		warn "ROM rootfs snapshot failed; backup will continue without it"
+		warn "снимок ROM rootfs не получился; бэкап продолжится без него"
 		rm -f "$WORKDIR/rom-rootfs.tar.gz"
 	fi
 }
@@ -255,11 +255,11 @@ copy_firmware_image() {
 	local image base
 	image="$1"
 	[ -n "$image" ] || return
-	[ -r "$image" ] || die "firmware image is not readable: $image"
+	[ -r "$image" ] || die "firmware image недоступен для чтения: $image"
 
 	base="$(basename "$image")"
 	mkdir -p "$WORKDIR/firmware"
-	cp "$image" "$WORKDIR/firmware/$base" || die "cannot copy firmware image"
+	cp "$image" "$WORKDIR/firmware/$base" || die "не удалось скопировать firmware image"
 	if command -v sha256sum >/dev/null 2>&1; then
 		(
 			cd "$WORKDIR/firmware" && sha256sum "$base" >"$base.sha256"
@@ -271,7 +271,7 @@ copy_firmware_image() {
 dump_raw_mtd() {
 	local raw line dev name safe
 	if [ ! -r /proc/mtd ]; then
-		warn "/proc/mtd is not available; raw MTD dump skipped"
+		warn "/proc/mtd недоступен; raw MTD dump пропущен"
 		return
 	fi
 
@@ -286,8 +286,8 @@ dump_raw_mtd() {
 				name="$(printf '%s\n' "$line" | sed 's/.*"\(.*\)".*/\1/')"
 				safe="$(sanitize "$name")"
 				if [ -e "/dev/$dev" ]; then
-					log "Dumping /dev/$dev ($name)"
-					dd if="/dev/$dev" of="$raw/$dev-$safe.bin" bs=64k 2>"$raw/$dev-$safe.dd.log" || warn "failed to dump /dev/$dev"
+					log "Сохраняю /dev/$dev ($name)"
+					dd if="/dev/$dev" of="$raw/$dev-$safe.bin" bs=64k 2>"$raw/$dev-$safe.dd.log" || warn "не удалось сохранить /dev/$dev"
 				fi
 				;;
 		esac
@@ -305,7 +305,7 @@ prune_old_backups() {
 
 	case "$keep_days" in
 		*[!0-9]*)
-			warn "keep_days must be a number; cleanup skipped"
+			warn "keep_days должен быть числом; очистка пропущена"
 			return
 			;;
 	esac
@@ -327,12 +327,12 @@ cmd_create() {
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			-o|--output-dir)
-				[ $# -ge 2 ] || die "$1 requires a directory"
+				[ $# -ge 2 ] || die "$1 требует папку"
 				output_dir="$2"
 				shift 2
 				;;
 			-n|--name)
-				[ $# -ge 2 ] || die "$1 requires a name"
+				[ $# -ge 2 ] || die "$1 требует имя"
 				name="$2"
 				shift 2
 				;;
@@ -345,7 +345,7 @@ cmd_create() {
 				shift
 				;;
 			--firmware-image)
-				[ $# -ge 2 ] || die "$1 requires a file"
+				[ $# -ge 2 ] || die "$1 требует файл"
 				firmware_image="$2"
 				shift 2
 				;;
@@ -358,14 +358,14 @@ cmd_create() {
 				exit 0
 				;;
 			*)
-				die "unknown create option: $1"
+				die "неизвестная опция create: $1"
 				;;
 		esac
 	done
 
 	need_cmd tar
 	need_cmd gzip
-	mkdir -p "$output_dir" || die "cannot create output directory: $output_dir"
+	mkdir -p "$output_dir" || die "не удалось создать папку для архива: $output_dir"
 	make_workdir
 
 	timestamp="$(date '+%Y%m%d-%H%M%S' 2>/dev/null || date '+%s')"
@@ -376,35 +376,35 @@ cmd_create() {
 	fi
 	archive="$output_dir/$name.tar.gz"
 
-	log "Creating backup workspace"
+	log "Готовлю временную папку для бэкапа"
 	create_metadata
 	create_sysupgrade_backup
 
 	if [ "$include_overlay" = "1" ]; then
-		log "Adding overlay snapshot"
+		log "Добавляю снимок overlay"
 		create_overlay_snapshot
 	else
-		printf 'Overlay snapshot disabled by option.\n' >"$WORKDIR/overlay-upper.README.txt"
+		printf 'Снимок overlay отключен опцией.\n' >"$WORKDIR/overlay-upper.README.txt"
 	fi
 
 	if [ "$include_rom" = "1" ]; then
-		log "Adding ROM rootfs snapshot"
+		log "Добавляю снимок ROM rootfs"
 		create_rom_snapshot
 	else
-		printf 'ROM rootfs snapshot disabled by option.\n' >"$WORKDIR/rom-rootfs.README.txt"
+		printf 'Снимок ROM rootfs отключен опцией.\n' >"$WORKDIR/rom-rootfs.README.txt"
 	fi
 
 	copy_firmware_image "$firmware_image"
 
 	if [ "$include_raw_mtd" = "1" ]; then
-		warn "raw MTD dumps are device-specific and can be very large"
+		warn "raw MTD dumps завязаны на конкретное устройство и могут быть очень большими"
 		dump_raw_mtd
 	fi
 
 	if tar -czf "$archive" -C "$WORKDIR" .; then
 		:
 	else
-		die "cannot create archive: $archive"
+		die "не удалось создать архив: $archive"
 	fi
 
 	if command -v sha256sum >/dev/null 2>&1; then
@@ -412,23 +412,23 @@ cmd_create() {
 	fi
 
 	prune_old_backups "$output_dir" "$keep_days"
-	log "Backup created: $archive"
+	log "Бэкап создан: $archive"
 	if [ -f "$archive.sha256" ]; then
-		log "Checksum created: $archive.sha256"
+		log "Checksum создан: $archive.sha256"
 	fi
 }
 
 extract_archive() {
 	local archive
 	archive="$1"
-	[ -r "$archive" ] || die "archive is not readable: $archive"
+	[ -r "$archive" ] || die "архив недоступен для чтения: $archive"
 	need_cmd tar
 	need_cmd gzip
 	validate_tar_paths "$archive" "archive"
 	make_workdir
-	tar -xzf "$archive" -C "$WORKDIR" || die "cannot extract archive"
-	[ -r "$WORKDIR/MANIFEST" ] || die "archive does not contain MANIFEST"
-	grep -q "^format=$FORMAT" "$WORKDIR/MANIFEST" || die "unsupported backup format"
+	tar -xzf "$archive" -C "$WORKDIR" || die "не удалось распаковать архив"
+	[ -r "$WORKDIR/MANIFEST" ] || die "в архиве нет MANIFEST"
+	grep -q "^format=$FORMAT" "$WORKDIR/MANIFEST" || die "неподдерживаемый формат бэкапа"
 }
 
 show_manifest_summary() {
@@ -475,37 +475,37 @@ confirm_restore() {
 		return
 	fi
 
-	printf 'This will change files on this OpenWrt device. Type "yes" to continue: ' >&2
+	printf 'Это изменит файлы на OpenWrt-устройстве. Введи "yes" для продолжения: ' >&2
 	read -r answer
-	[ "$answer" = "yes" ] || die "restore cancelled"
+	[ "$answer" = "yes" ] || die "восстановление отменено"
 }
 
 restore_configs() {
 	if [ ! -r "$WORKDIR/config-backup.tar.gz" ]; then
-		warn "config-backup.tar.gz not found; config restore skipped"
+		warn "config-backup.tar.gz не найден; восстановление настроек пропущено"
 		return
 	fi
 
-	log "Restoring config backup"
+	log "Восстанавливаю config backup"
 	validate_tar_paths "$WORKDIR/config-backup.tar.gz" "config backup"
-	tar -xzpf "$WORKDIR/config-backup.tar.gz" -C / || die "config restore failed"
+	tar -xzpf "$WORKDIR/config-backup.tar.gz" -C / || die "восстановление настроек не удалось"
 }
 
 restore_packages() {
 	local installed line pkg failed
 	installed="$WORKDIR/packages/installed.txt"
 	[ -r "$installed" ] || {
-		warn "package list not found; package restore skipped"
+		warn "список пакетов не найден; восстановление пакетов пропущено"
 		return
 	}
 
 	if ! command -v opkg >/dev/null 2>&1; then
-		warn "opkg not found; package restore skipped"
+		warn "opkg не найден; восстановление пакетов пропущено"
 		return
 	fi
 
-	log "Updating package lists"
-	opkg update || warn "opkg update failed; package install will still be attempted"
+	log "Обновляю списки пакетов"
+	opkg update || warn "opkg update не сработал; установка пакетов все равно будет попробована"
 
 	failed=0
 	while IFS= read -r line; do
@@ -522,50 +522,50 @@ restore_packages() {
 			continue
 		fi
 
-		log "Installing package: $pkg"
+		log "Устанавливаю пакет: $pkg"
 		if ! opkg install "$pkg"; then
-			warn "failed to install package: $pkg"
+			warn "не удалось установить пакет: $pkg"
 			failed=1
 		fi
 	done <"$installed"
 
 	if [ "$failed" = "1" ]; then
-		warn "some packages could not be installed; check feed compatibility for this OpenWrt version"
+		warn "часть пакетов не установилась; проверь совместимость feeds с этой версией OpenWrt"
 	fi
 }
 
 restore_overlay() {
 	if [ ! -r "$WORKDIR/overlay-upper.tar.gz" ]; then
-		warn "overlay snapshot not found; overlay restore skipped"
+		warn "снимок overlay не найден; восстановление overlay пропущено"
 		return
 	fi
 
-	warn "overlay restore is best used on the same device and same OpenWrt release"
-	log "Restoring overlay snapshot to /"
+	warn "overlay лучше восстанавливать на том же устройстве и той же версии OpenWrt"
+	log "Восстанавливаю overlay snapshot в /"
 	validate_tar_paths "$WORKDIR/overlay-upper.tar.gz" "overlay snapshot"
-	tar -xzpf "$WORKDIR/overlay-upper.tar.gz" -C / || die "overlay restore failed"
+	tar -xzpf "$WORKDIR/overlay-upper.tar.gz" -C / || die "восстановление overlay не удалось"
 }
 
 flash_firmware() {
 	local image_name image_path
-	[ -r "$WORKDIR/firmware/IMAGE" ] || die "archive does not contain a firmware image"
+	[ -r "$WORKDIR/firmware/IMAGE" ] || die "в архиве нет firmware image"
 	image_name="$(cat "$WORKDIR/firmware/IMAGE")"
 	case "$image_name" in
 		*/*|../*|*/../*|..)
-			die "firmware image name is unsafe"
+			die "имя firmware image небезопасно"
 			;;
 	esac
 	image_path="$WORKDIR/firmware/$image_name"
-	[ -r "$image_path" ] || die "firmware image listed in archive is missing: $image_name"
-	command -v sysupgrade >/dev/null 2>&1 || die "sysupgrade command not found"
+	[ -r "$image_path" ] || die "firmware image указан в архиве, но файл отсутствует: $image_name"
+	command -v sysupgrade >/dev/null 2>&1 || die "команда sysupgrade не найдена"
 
-	warn "sysupgrade will flash firmware and reboot the device"
+	warn "sysupgrade прошьет firmware и перезагрузит устройство"
 	sysupgrade "$image_path"
 }
 
 cmd_restore() {
 	local archive yes do_configs do_packages do_overlay do_flash
-	[ $# -ge 1 ] || die "restore requires an archive path"
+	[ $# -ge 1 ] || die "restore требует путь к архиву"
 	archive="$1"
 	shift
 
@@ -602,7 +602,7 @@ cmd_restore() {
 				exit 0
 				;;
 			*)
-				die "unknown restore option: $1"
+				die "неизвестная опция restore: $1"
 				;;
 		esac
 	done
@@ -628,11 +628,11 @@ cmd_restore() {
 		restore_overlay
 	fi
 
-	log "Restore finished. Reboot is recommended."
+	log "Восстановление завершено. Рекомендуется перезагрузка."
 }
 
 cmd_inspect() {
-	[ $# -ge 1 ] || die "inspect requires an archive path"
+	[ $# -ge 1 ] || die "inspect требует путь к архиву"
 	extract_archive "$1"
 	show_manifest_summary
 }
@@ -657,7 +657,7 @@ main() {
 			usage
 			;;
 		*)
-			die "unknown command: $cmd"
+			die "неизвестная команда: $cmd"
 			;;
 	esac
 }
