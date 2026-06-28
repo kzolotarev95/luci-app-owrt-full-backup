@@ -649,7 +649,8 @@ $refresh_meta
 :root { color-scheme: light dark; --bg: #f6f7f9; --panel: #fff; --text: #15181c; --muted: #667085; --line: #d9dee7; --accent: #16a34a; --accent-hover: #15803d; --button-text: #fff; --bad: #dc2626; --bad-hover: #b91c1c; --ok: #067647; --hot: #dc2626; --warn: #eab308; }
 @media (prefers-color-scheme: dark) { :root { --bg: #111418; --panel: #181d23; --text: #eef2f6; --muted: #a6b0bf; --line: #2d3642; --accent: #16a34a; --accent-hover: #15803d; --button-text: #fff; --bad: #dc2626; --bad-hover: #b91c1c; --ok: #7ee0a3; --hot: #dc2626; --warn: #eab308; } }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; zoom: .9; }
+html { zoom: .9; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 main { max-width: 1280px; margin: 0 auto; padding: 18px; display: grid; gap: 14px; }
 h1 { margin: 0; font-size: 22px; }
 h2 { margin: 0 0 12px; font-size: 16px; }
@@ -676,6 +677,7 @@ button:hover, .button:hover { background: var(--accent-hover); }
 .small { min-height: 30px; padding: 6px 9px; font-size: 12px; }
 .danger { background: var(--bad); color: #fff; }
 .danger:hover { background: var(--bad-hover); }
+.restore-submit { margin-top: 12px; }
 .muted { color: var(--muted); }
 .file-input { width: 100%; border: 1px dashed var(--line); border-radius: 6px; padding: 12px; color: var(--muted); }
 .result-card, .job-card { border-left: 4px solid var(--accent); }
@@ -843,7 +845,7 @@ $(backup_rows)
 </div>
 <label>Введи RESTORE для подтверждения</label>
 <input type="text" name="confirm" autocomplete="off">
-<button class="danger" type="submit">Запустить восстановление</button>
+<button class="danger restore-submit" type="submit">Запустить восстановление</button>
 </form>
 </div>
 
