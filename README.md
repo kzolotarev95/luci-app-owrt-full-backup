@@ -193,8 +193,3 @@ wget -O - https://raw.githubusercontent.com/kzolotarev95/luci-app-owrt-full-back
 ```
 
 Архивы бэкапов при удалении не стираются.
-
-## Поддержка
-
-- GitHub: [github.com/kzolotarev95](https://github.com/kzolotarev95)
-- Telegram: [t.me/kzolotarev95](https://t.me/kzolotarev95)
