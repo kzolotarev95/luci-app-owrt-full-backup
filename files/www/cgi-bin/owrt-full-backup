@@ -418,8 +418,6 @@ td, th { border-bottom: 1px solid var(--line); padding: 8px 6px; text-align: lef
 </div>
 <div class="hero-actions">
 <a class="button" href="/cgi-bin/luci/admin/status/overview">Вернуться в OpenWrt</a>
-<span class="pill">Backup / Restore</span>
-<span class="pill">OpenWrt 22-25</span>
 </div>
 </header>
 EOF
@@ -493,7 +491,7 @@ $(backup_rows)
 <button class="danger" type="submit">Запустить восстановление</button>
 </form>
 
-<form class="panel span6" method="post" action="$(self_url)">
+<form class="panel span12" method="post" action="$(self_url)">
 <h2>Настройки по умолчанию</h2>
 <input type="hidden" name="key" value="$key">
 <input type="hidden" name="action" value="save_defaults">
