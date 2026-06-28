@@ -28,6 +28,14 @@ sh install.sh
 wget -O - https://raw.githubusercontent.com/kzolotarev95/luci-app-owrt-full-backup/main/install.sh | sh
 ```
 
+Если GitHub или браузер отдал старую версию, принудительно обнови с cache-bust:
+
+```sh
+wget -O - "https://raw.githubusercontent.com/kzolotarev95/luci-app-owrt-full-backup/main/install.sh?v=$(date +%s)" | sh
+rm -rf /tmp/luci-indexcache /tmp/luci-modulecache
+/etc/init.d/uhttpd restart
+```
+
 После установки скрипт покажет приватную ссылку:
 
 ```text

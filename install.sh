@@ -33,7 +33,7 @@ fetch() {
 }
 
 install_file() {
-	local rel mode src dst
+	local rel mode src dst bust
 	rel="$1"
 	mode="$2"
 	src="$SCRIPT_DIR/files/$rel"
@@ -42,13 +42,14 @@ install_file() {
 	if [ -f "$src" ]; then
 		cp "$src" "$dst"
 	else
-		fetch "$RAW_URL/files/$rel" "$dst"
+		bust="$(date +%s 2>/dev/null || echo $$)"
+		fetch "$RAW_URL/files/$rel?v=$bust" "$dst"
 	fi
 	chmod "$mode" "$dst"
 }
 
 install_config() {
-	local rel src dst
+	local rel src dst bust
 	rel="etc/config/fullbackup"
 	src="$SCRIPT_DIR/files/$rel"
 	dst="$(target_path "$rel")"
@@ -60,7 +61,8 @@ install_config() {
 	if [ -f "$src" ]; then
 		cp "$src" "$dst"
 	else
-		fetch "$RAW_URL/files/$rel" "$dst"
+		bust="$(date +%s 2>/dev/null || echo $$)"
+		fetch "$RAW_URL/files/$rel?v=$bust" "$dst"
 	fi
 	chmod 0644 "$dst"
 }
