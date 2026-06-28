@@ -103,6 +103,9 @@ install_file "usr/sbin/owrt-full-backup" 0755
 ln -sf owrt-full-backup "$(target_path usr/sbin/owrt-backup)"
 install_config
 install_file "www/cgi-bin/owrt-full-backup" 0755
+install_file "usr/lib/lua/luci/controller/owrt_full_backup.lua" 0644
+
+rm -rf "$(target_path tmp/luci-indexcache)" "$(target_path tmp/luci-modulecache)" 2>/dev/null || true
 
 if [ -x "$(target_path etc/init.d/uhttpd)" ]; then
 	"$(target_path etc/init.d/uhttpd)" reload >/dev/null 2>&1 || "$(target_path etc/init.d/uhttpd)" restart >/dev/null 2>&1 || true
@@ -112,5 +115,6 @@ key="$(make_key)"
 ip="$(router_ip)"
 
 info "Веб-панель OpenWrt Full Backup установлена."
+info "LuCI:   Службы -> OpenWrt Full Backup"
 info "Открыть: http://$ip/cgi-bin/owrt-full-backup?key=$key"
 info "CLI:    owrt-full-backup create -o /mnt/usb"

@@ -8,6 +8,7 @@
 
 - `/usr/sbin/owrt-full-backup` - консольная команда;
 - `/www/cgi-bin/owrt-full-backup` - веб-панель;
+- `/usr/lib/lua/luci/controller/owrt_full_backup.lua` - пункт меню LuCI;
 - `/etc/config/fullbackup` - настройки по умолчанию;
 - `/etc/owrt-full-backup/web.key` - секретный ключ для входа в панель.
 
@@ -34,6 +35,14 @@ http://192.168.1.1/cgi-bin/owrt-full-backup?key=SECRET
 ```
 
 Эту ссылку никому не отдавай: ключ в URL дает доступ к созданию и восстановлению бэкапов.
+
+Также появится пункт меню LuCI:
+
+```text
+Службы -> OpenWrt Full Backup
+```
+
+Если пункт не появился сразу, обнови страницу LuCI или выйди и зайди снова.
 
 ## Возможности веб-панели
 

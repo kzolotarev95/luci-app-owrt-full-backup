@@ -16,12 +16,15 @@ rmf() {
 rmf usr/sbin/owrt-full-backup
 rmf usr/sbin/owrt-backup
 rmf www/cgi-bin/owrt-full-backup
+rmf usr/lib/lua/luci/controller/owrt_full_backup.lua
 
 if [ "$PURGE" = "1" ]; then
 	rmf etc/config/fullbackup
 	rmf etc/owrt-full-backup/web.key
 	rmdir "$(target_path etc/owrt-full-backup)" 2>/dev/null || true
 fi
+
+rm -rf "$(target_path tmp/luci-indexcache)" "$(target_path tmp/luci-modulecache)" 2>/dev/null || true
 
 if [ -x "$(target_path etc/init.d/uhttpd)" ]; then
 	"$(target_path etc/init.d/uhttpd)" reload >/dev/null 2>&1 || "$(target_path etc/init.d/uhttpd)" restart >/dev/null 2>&1 || true

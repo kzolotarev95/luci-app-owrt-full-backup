@@ -11,3 +11,4 @@ uninstall.sh text eol=lf
 files/usr/sbin/owrt-full-backup text eol=lf
 files/etc/config/fullbackup text eol=lf
 files/www/cgi-bin/owrt-full-backup text eol=lf
+files/usr/lib/lua/luci/controller/owrt_full_backup.lua text eol=lf
