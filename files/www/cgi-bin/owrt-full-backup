@@ -486,6 +486,35 @@ storage_widgets() {
 	done
 }
 
+temperature_widgets() {
+	local path raw whole frac label printed type_path name_path
+	printed=0
+	for path in /sys/class/thermal/thermal_zone*/temp /sys/class/hwmon/hwmon*/temp*_input; do
+		[ -r "$path" ] || continue
+		raw="$(cat "$path" 2>/dev/null | tr -dc '0-9')"
+		[ -n "$raw" ] || continue
+		case "$raw" in *[!0-9]*) continue ;; esac
+		if [ "$raw" -ge 1000 ] 2>/dev/null; then
+			whole="$((raw / 1000))"
+			frac="$(((raw % 1000) / 100))"
+		else
+			whole="$raw"
+			frac=0
+		fi
+		label="Датчик температуры"
+		type_path="${path%/temp}/type"
+		name_path="${path%/temp*_input}/name"
+		if [ -r "$type_path" ]; then
+			label="$(cat "$type_path" 2>/dev/null | sed -n '1p')"
+		elif [ -r "$name_path" ]; then
+			label="$(cat "$name_path" 2>/dev/null | sed -n '1p')"
+		fi
+		printed=1
+		printf '<div class="temp-widget"><div><strong>%s</strong><span>%s</span></div><b>%s.%s °C</b></div>' "$(h "$label")" "$(h "$path")" "$(h "$whole")" "$(h "$frac")"
+	done
+	[ "$printed" = "1" ] || printf '<p class="muted">Датчик температуры не найден.</p>'
+}
+
 checkbox_attr() {
 	[ "$1" = "1" ] && printf ' checked'
 }
@@ -617,8 +646,8 @@ page() {
 $refresh_meta
 <title>OpenWrt Full Backup</title>
 <style>
-:root { color-scheme: light dark; --bg: #f6f7f9; --panel: #fff; --text: #15181c; --muted: #667085; --line: #d9dee7; --accent: #22c55e; --accent-hover: #16a34a; --button-text: #052e16; --bad: #ff1744; --bad-hover: #e6002f; --ok: #067647; --hot: #ff1744; }
-@media (prefers-color-scheme: dark) { :root { --bg: #111418; --panel: #181d23; --text: #eef2f6; --muted: #a6b0bf; --line: #2d3642; --accent: #22c55e; --accent-hover: #16a34a; --button-text: #052e16; --bad: #ff1744; --bad-hover: #e6002f; --ok: #7ee0a3; --hot: #ff1744; } }
+:root { color-scheme: light dark; --bg: #f6f7f9; --panel: #fff; --text: #15181c; --muted: #667085; --line: #d9dee7; --accent: #16a34a; --accent-hover: #15803d; --button-text: #fff; --bad: #dc2626; --bad-hover: #b91c1c; --ok: #067647; --hot: #dc2626; }
+@media (prefers-color-scheme: dark) { :root { --bg: #111418; --panel: #181d23; --text: #eef2f6; --muted: #a6b0bf; --line: #2d3642; --accent: #16a34a; --accent-hover: #15803d; --button-text: #fff; --bad: #dc2626; --bad-hover: #b91c1c; --ok: #7ee0a3; --hot: #dc2626; } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; zoom: .9; }
 main { max-width: 1280px; margin: 0 auto; padding: 18px; display: grid; gap: 14px; }
@@ -655,7 +684,7 @@ button:hover, .button:hover { background: var(--accent-hover); }
 .result-output, .console { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
 .console { max-height: 340px; }
 .console-title { margin: 12px 0 6px; font-weight: 700; }
-.device-card, .create-card { min-width: 0; }
+.device-card, .create-card, .temp-card { min-width: 0; }
 .disk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-top: 12px; }
 .disk-widget { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: rgba(127,127,127,.06); }
 .disk-top { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
@@ -665,6 +694,11 @@ button:hover, .button:hover { background: var(--accent-hover); }
 .meter { height: 8px; border-radius: 999px; background: rgba(127,127,127,.18); overflow: hidden; margin: 10px 0; }
 .meter span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--hot)); }
 .disk-meta { display: grid; gap: 3px; color: var(--muted); font-size: 12px; }
+.temp-list { display: grid; gap: 10px; margin-top: 12px; }
+.temp-widget { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: rgba(127,127,127,.06); display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.temp-widget strong, .temp-widget span, .temp-widget b { display: block; }
+.temp-widget span { margin-top: 3px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.temp-widget b { color: var(--hot); font-size: 22px; white-space: nowrap; }
 .settings-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .settings-tools form { min-width: 0; }
 .settings-tools h2 { margin-top: 0; }
@@ -688,7 +722,7 @@ td, th { border-bottom: 1px solid var(--line); padding: 8px 6px; text-align: lef
 <h1>OpenWrt Full Backup</h1>
 <a class="button" href="/cgi-bin/luci/admin/status/overview">Вернуться в OpenWrt</a>
 </div>
-<p>Веб-панель для полного бэкапа OpenWrt без сборки IPK. <span class="hot-text">Держи эту ссылку в секрете.</span></p>
+<p>Веб-панель для полного бэкапа OpenWrt без сборки IPK. Держи эту ссылку в секрете.</p>
 </div>
 </header>
 EOF
@@ -723,6 +757,11 @@ EOF
 <span class="pill">Плата: $(h "$(system_value board)")</span>
 </div>
 <div class="disk-grid">$(storage_widgets)</div>
+</div>
+
+<div class="panel span6 temp-card">
+<h2>Температура роутера</h2>
+<div class="temp-list">$(temperature_widgets)</div>
 </div>
 
 <form class="panel span6 create-card" method="post" action="$(self_url)">
