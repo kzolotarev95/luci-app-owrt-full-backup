@@ -463,6 +463,29 @@ system_value() {
 	esac
 }
 
+storage_widgets() {
+	local fs size used avail pct mount usage label
+	df -h 2>/dev/null | awk 'NR > 1 { print }' | while read -r fs size used avail pct mount; do
+		[ -n "$mount" ] || continue
+		usage="${pct%%%}"
+		case "$usage" in ''|*[!0-9]*) usage=0 ;; esac
+		[ "$usage" -gt 100 ] 2>/dev/null && usage=100
+		case "$mount" in
+			/) label="Корневой раздел /" ;;
+			/rom) label="Раздел прошивки /rom" ;;
+			/tmp) label="Временная память /tmp" ;;
+			/overlay) label="Изменяемый раздел /overlay" ;;
+			/dev) label="Служебный раздел /dev" ;;
+			*) label="Раздел $mount" ;;
+		esac
+		printf '<div class="disk-widget">'
+		printf '<div class="disk-top"><div><strong>%s</strong><span>%s</span></div><b>%s</b></div>' "$(h "$label")" "$(h "$fs")" "$(h "$pct")"
+		printf '<div class="meter"><span style="width:%s%%"></span></div>' "$usage"
+		printf '<div class="disk-meta"><span>Занято: %s</span><span>Свободно: %s</span><span>Всего: %s</span></div>' "$(h "$used")" "$(h "$avail")" "$(h "$size")"
+		printf '</div>'
+	done
+}
+
 checkbox_attr() {
 	[ "$1" = "1" ] && printf ' checked'
 }
@@ -516,7 +539,7 @@ render_job_panel() {
 		running)
 			state_class="running"
 			state_text="Выполняется"
-			estimate_text=" · Примерно: 1-3 мин"
+			estimate_text="Примерно: 1-3 мин"
 			job_note="Страница обновляется каждые 2 секунды. Время примерное: большой overlay, ROM или медленная флешка могут идти дольше."
 			button_text="Обновить лог"
 			;;
@@ -541,7 +564,10 @@ render_job_panel() {
 	esac
 
 	printf '<section class="panel span6 job-card %s">' "$state_class"
-	printf '<div class="section-head"><div><h2>%s</h2><p>Статус: %s · Время: <span id="job-timer" data-start="%s">%s</span>%s' "$(h "$title")" "$(h "$state_text")" "$(h "$started")" "$(h "$elapsed_text")" "$(h "$estimate_text")"
+	printf '<div class="section-head"><div><h2>%s</h2><p>Статус: %s · Время: <span id="job-timer" data-start="%s">%s</span>' "$(h "$title")" "$(h "$state_text")" "$(h "$started")" "$(h "$elapsed_text")"
+	if [ -n "$estimate_text" ]; then
+		printf ' · <span class="hot-text">%s</span>' "$(h "$estimate_text")"
+	fi
 	if [ -n "$code" ] && [ "$code" != "0" ]; then
 		printf ' · Код ошибки: %s' "$(h "$code")"
 	fi
@@ -591,8 +617,8 @@ page() {
 $refresh_meta
 <title>OpenWrt Full Backup</title>
 <style>
-:root { color-scheme: light dark; --bg: #f6f7f9; --panel: #fff; --text: #15181c; --muted: #667085; --line: #d9dee7; --accent: #22c55e; --accent-hover: #16a34a; --button-text: #052e16; --bad: #b42318; --ok: #067647; }
-@media (prefers-color-scheme: dark) { :root { --bg: #111418; --panel: #181d23; --text: #eef2f6; --muted: #a6b0bf; --line: #2d3642; --accent: #22c55e; --accent-hover: #16a34a; --button-text: #052e16; --bad: #ff9b91; --ok: #7ee0a3; } }
+:root { color-scheme: light dark; --bg: #f6f7f9; --panel: #fff; --text: #15181c; --muted: #667085; --line: #d9dee7; --accent: #22c55e; --accent-hover: #16a34a; --button-text: #052e16; --bad: #ff1744; --bad-hover: #e6002f; --ok: #067647; --hot: #ff1744; }
+@media (prefers-color-scheme: dark) { :root { --bg: #111418; --panel: #181d23; --text: #eef2f6; --muted: #a6b0bf; --line: #2d3642; --accent: #22c55e; --accent-hover: #16a34a; --button-text: #052e16; --bad: #ff1744; --bad-hover: #e6002f; --ok: #7ee0a3; --hot: #ff1744; } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 main { max-width: 1280px; margin: 0 auto; padding: 18px; display: grid; gap: 14px; }
@@ -604,6 +630,7 @@ p { margin: 6px 0; color: var(--muted); }
 .hero p { max-width: 680px; margin-top: 8px; }
 .hero-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; min-width: 260px; }
 .hero .pill { background: rgba(127,127,127,.08); color: var(--text); }
+.hot-text { color: var(--hot); font-weight: 800; }
 .grid { display: grid; gap: 14px; grid-template-columns: repeat(12, 1fr); }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
 .span4 { grid-column: span 4; }
@@ -617,7 +644,7 @@ button, .button { display: inline-flex; align-items: center; justify-content: ce
 button:hover, .button:hover { background: var(--accent-hover); }
 .small { min-height: 30px; padding: 6px 9px; font-size: 12px; }
 .danger { background: var(--bad); color: #fff; }
-.danger:hover { background: var(--bad); }
+.danger:hover { background: var(--bad-hover); }
 .muted { color: var(--muted); }
 .file-input { width: 100%; border: 1px dashed var(--line); border-radius: 6px; padding: 12px; color: var(--muted); }
 .result-card, .job-card { border-left: 4px solid var(--accent); }
@@ -628,7 +655,15 @@ button:hover, .button:hover { background: var(--accent-hover); }
 .console { max-height: 340px; }
 .console-title { margin: 12px 0 6px; font-weight: 700; }
 .device-card, .create-card { min-width: 0; }
-.device-disk { white-space: pre; font-size: 12px; }
+.disk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-top: 12px; }
+.disk-widget { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: rgba(127,127,127,.06); }
+.disk-top { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+.disk-top strong, .disk-top span, .disk-top b { display: block; }
+.disk-top span { margin-top: 3px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.disk-top b { color: var(--hot); font-size: 16px; }
+.meter { height: 8px; border-radius: 999px; background: rgba(127,127,127,.18); overflow: hidden; margin: 10px 0; }
+.meter span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--hot)); }
+.disk-meta { display: grid; gap: 3px; color: var(--muted); font-size: 12px; }
 code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 pre { overflow: auto; background: rgba(127,127,127,.12); border-radius: 6px; padding: 10px; }
 table { width: 100%; border-collapse: collapse; }
@@ -646,12 +681,16 @@ td, th { border-bottom: 1px solid var(--line); padding: 8px 6px; text-align: lef
 <header class="hero panel">
 <div>
 <h1>OpenWrt Full Backup</h1>
-<p>Веб-панель для полного бэкапа OpenWrt без сборки IPK. Держи эту ссылку в секрете.</p>
+<p>Веб-панель для полного бэкапа OpenWrt без сборки IPK. <span class="hot-text">Держи эту ссылку в секрете.</span></p>
 </div>
 <div class="hero-actions">
 <a class="button" href="/cgi-bin/luci/admin/status/overview">Вернуться в OpenWrt</a>
 </div>
 </header>
+EOF
+
+	cat <<EOF
+<section class="grid">
 EOF
 
 	if [ -n "$RESULT_FILE" ]; then
@@ -662,14 +701,10 @@ EOF
 			result_class="error"
 			result_status="Ошибка, код выхода: $RESULT_CODE"
 		fi
-		printf '<section class="panel span12 result-card %s"><div class="section-head"><div><h2>%s</h2><p>%s</p></div><a class="button small" href="%s?key=%s">Скрыть сообщение</a></div><pre class="result-output">' "$result_class" "$(h "$RESULT_TITLE")" "$(h "$result_status")" "$(self_url)" "$key"
+		printf '<section class="panel span6 result-card %s"><div class="section-head"><div><h2>%s</h2><p>%s</p></div><a class="button small" href="%s?key=%s">Скрыть сообщение</a></div><pre class="result-output">' "$result_class" "$(h "$RESULT_TITLE")" "$(h "$result_status")" "$(self_url)" "$key"
 		html_escape <"$RESULT_FILE"
 		printf '</pre></section>'
 	fi
-
-	cat <<EOF
-<section class="grid">
-EOF
 
 	if [ -n "$job_id" ]; then
 		render_job_panel "$job_id"
@@ -683,7 +718,7 @@ EOF
 <span class="pill">Версия: $(h "$(system_value release)")</span>
 <span class="pill">Плата: $(h "$(system_value board)")</span>
 </div>
-<pre class="device-disk">$(df -h 2>/dev/null | html_escape)</pre>
+<div class="disk-grid">$(storage_widgets)</div>
 </div>
 
 <form class="panel span6 create-card" method="post" action="$(self_url)">
